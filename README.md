@@ -4,7 +4,8 @@
 ## 🎲 Características  
 ✅ Interfaz en la terminal con **Ratatui**  
 ✅ Reglas clásicas del Blackjack (21, doble, split)  
-✅ Apuestas y sistema de banca virtual  
+✅ Contador de partidas ganadas
+✅ Diseño vertical
 ✅ Animaciones simples con ASCII  
 ✅ Código modular y fácil de entender  
 
