@@ -34,4 +34,4 @@ cargo run
 ```
 
 ## 📜 Licencia
-Este proyecto está bajo la licencia [MIT](license). ¡Siéntete libre de contribuir!
+Este proyecto está bajo la licencia [MIT](LICENSE). ¡Siéntete libre de contribuir!
