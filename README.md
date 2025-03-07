@@ -29,7 +29,7 @@ Usa las teclas:
 ## 🛠️ Compilar desde el código fuente
 Si prefieres compilarlo manualmente:
 ```bash
-git clone https://github.com/tuusuario/ratjack.git
+git clone https://github.com/tomas2p/ratjack.git
 cd ratjack
 cargo run
 ```
