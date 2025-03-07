@@ -22,9 +22,11 @@ ratjack
 ```
 Usa las teclas:
 
-    ENTER / 1 / p → Pedir carta (Hit)
-    2 / s → Quedarse (Stand)
-    q → Salir
+  <kbd>↵ (Enter)</kbd> / <kbd>1</kbd> / <kbd>p</kbd> → Pedir carta (Hit)
+
+  <kbd>2</kbd> / <kbd>s</kbd> → Quedarse (Stand)
+
+  <kbd>q</kbd> → Salir
 
 ## 🛠️ Compilar desde el código fuente
 Si prefieres compilarlo manualmente:
