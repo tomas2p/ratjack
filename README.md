@@ -1,3 +1,4 @@
+![](ratjack-logo.PNG)
 # 🃏 RatJack - Blackjack en Rust con Ratatui
 **RatJack** es un juego de **Blackjack** escrito en **Rust**, con una interfaz de usuario basada en **Ratatui**. Juega directamente desde la terminal con una experiencia minimalista pero interactiva.  
 
