@@ -176,7 +176,7 @@ pub fn strategy_label(strategy: &Strategy) -> String {
         Strategy::Threshold(n) => format!("Threshold({})", n),
         Strategy::Random(p) => format!("Random({:.2})", p),
         Strategy::Prob(p) => format!("Prob({:.2})", p),
-        Strategy::Count { base } => format!("Count(base={})", base),
+        Strategy::Count { base } => format!("Count({})", base),
     }
 }
 

@@ -123,12 +123,20 @@ pub fn parse_args() -> Config {
 }
 
 pub fn print_help() {
-    println!("RatJack - blackjack simulator/ui\n");
-    println!("Usage:");
-    println!("  --auto-ui <reps> <players> [--strategies \"s1,s2\"]   Run automated simulations inside the UI");
-    println!("  --ui [--ui-strategies \"s1,s2\"]                      Start interactive UI");
-    println!("  -h, --help                                              Show this help");
-    println!("\nStrategies format examples: 'threshold:16,prob:0.35,random:0.5'\n");
+  println!("RatJack - simulador/UI de blackjack\n");
+  println!("Uso:");
+  println!("  --auto-ui <reps> <players> [--strategies \"s1,s2\"]   Ejecuta simulaciones automáticas dentro de la UI");
+  println!("  --ui [--ui-strategies \"s1,s2\"]                      Inicia la UI interactiva");
+  println!("  -h, --help                                           Muestra esta ayuda");
+  println!("\nFormato de estrategias y ejemplos: 'threshold:16,prob:0.35,random:0.5,count:hi-lo'\n");
+
+  println!("Estrategias disponibles (formato clave:valor):");
+  println!("  threshold:<N>    - Planta (stand) si el total de la mano >= N; pide (hit) en caso contrario.");
+  println!("  prob:<P>         - En cada decisión, planta con probabilidad P (0.0 - 1.0).");
+  println!("  random:<P>       - Similar a prob: decisión aleatoria de plantarse con probabilidad P.");
+  println!("  count:<N>        - Usa conteo de cartas (p. ej. 'hi-lo') para ajustar decisiones según el conteo.");
+  println!("\nNotas:");
+  println!("  - Las estrategias se combinan en una lista separada por comas, p. ej. --strategies \"threshold:16,random:0.5\".");
 }
 
 #[cfg(test)]

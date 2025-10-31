@@ -1,5 +1,3 @@
-use predicates::prelude::*;
-
 // Integration test: run the binary in headless mode to execute the simulation path without a terminal UI.
 #[test]
 fn test_auto_ui_headless_runs_and_prints_summary() {
@@ -13,5 +11,5 @@ fn test_auto_ui_headless_runs_and_prints_summary() {
         .arg("threshold:16,prob:0.35");
     cmd.assert()
         .success()
-        .stdout(predicate::str::contains("Resumen final después de"));
+        .stdout(predicates::prelude::predicate::str::contains("Resumen final después de"));
 }

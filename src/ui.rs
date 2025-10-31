@@ -184,11 +184,13 @@ pub fn run_auto_ui<B: Backend>(
         }
     }
 
-    // stats
+    // Only per-partida metrics
     let mut wins = vec![0u32; num_players];
+    let mut wins_per_game = vec![0u32; num_players];
+    let mut per_game_ties = 0u32;
     let mut busts = vec![0u32; num_players];
     let mut total_points = vec![0u64; num_players];
-    let mut ties = 0u32;
+    let mut ties = 0u32; // kept for compatibility but unused in per-partida mode
 
     // render helper: draw title/content/footer matching normal game UI exactly
     let render = |frame: &mut ratatui::Frame, _title: &str, lines: Vec<String>| {
@@ -408,15 +410,11 @@ pub fn run_auto_ui<B: Backend>(
 
         let mut baraja = crate::game::deck::crear_baraja();
 
-        // Create players
+        // Create players (all equal: P1, P2, ...)
         let mut jugadores: Vec<Jugador> = (0..num_players)
             .map(|i| {
                 let mut j = Jugador::nuevo();
-                j.nombre = if i == num_players - 1 {
-                    "Banca".to_string()
-                } else {
-                    format!("Jugador {}", i + 1)
-                };
+                j.nombre = format!("P{}", i + 1);
                 j
             })
             .collect();
@@ -447,29 +445,38 @@ pub fn run_auto_ui<B: Backend>(
             }
         }
 
-        // evaluate
-        let bank_idx = num_players - 1;
-        let bank_points = jugadores[bank_idx].puntaje();
-        total_points[bank_idx] += bank_points as u64;
-        if bank_points > 21 {
-            busts[bank_idx] += 1;
+        // evaluate: all-vs-all pairwise comparisons
+        for i in 0..num_players {
+            let pts = jugadores[i].puntaje();
+            total_points[i] += pts as u64;
+            if pts > 21 {
+                busts[i] += 1;
+            }
         }
 
-        for i in 0..num_players - 1 {
-            let p_points = jugadores[i].puntaje();
-            total_points[i] += p_points as u64;
-            if p_points > 21 {
-                busts[i] += 1;
-                wins[bank_idx] += 1;
-            } else if bank_points > 21 {
-                wins[i] += 1;
-            } else if p_points > bank_points {
-                wins[i] += 1;
-            } else if bank_points > p_points {
-                wins[bank_idx] += 1;
-            } else {
-                ties += 1;
+        // per-game outcome only (no enfrentamientos)
+        let mut best_pts: i32 = -1;
+        for i in 0..num_players {
+            let pts = jugadores[i].puntaje() as i32;
+            if pts <= 21 && pts > best_pts {
+                best_pts = pts;
             }
+        }
+        if best_pts >= 0 {
+            let mut winners: Vec<usize> = Vec::new();
+            for i in 0..num_players {
+                if jugadores[i].puntaje() as i32 == best_pts {
+                    winners.push(i);
+                }
+            }
+            if winners.len() == 1 {
+                wins_per_game[winners[0]] += 1;
+                wins[winners[0]] += 1;
+            } else {
+                per_game_ties += 1;
+            }
+        } else {
+            per_game_ties += 1;
         }
 
         // periodic UI update
@@ -477,18 +484,25 @@ pub fn run_auto_ui<B: Backend>(
             let mut lines = Vec::new();
             lines.push(format!("Iteración {}/{}", iter + 1, reps));
             lines.push(String::new());
+            // header: Vict(part) (sole wins) and % of games
+            lines.push(format!(
+                "{:<3} {:<30} {:>10} {:>8} {:>10}",
+                "ID", "Estrategia", "Vict(part)", "%P", "PtsAvg"
+            ));
+            lines.push("-".repeat(70));
             for i in 0..num_players {
-                let name = if i == num_players - 1 {
-                    "Banca".to_string()
-                } else {
-                    format!("Jugador {}", i + 1)
-                };
+                let id = format!("{}", i + 1);
                 let alg = crate::strategies::strategy_label(&strat_vec[i]);
-                let w = wins[i];
+                let wp = wins_per_game[i];
+                let pct = if iter + 1 > 0 {
+                    (wp as f64) / ((iter + 1) as f64) * 100.0
+                } else {
+                    0.0
+                };
                 let avg = (total_points[i] as f64) / ((iter + 1) as f64);
                 lines.push(format!(
-                    "{} | {} | Vict: {} | Busts: {} | AvgPts: {:.2}",
-                    name, alg, w, busts[i], avg
+                    "{:<3} {:<30} {:>10} {:>7.2} {:>10.2}",
+                    id, alg, wp, pct, avg
                 ));
             }
             terminal.draw(|f| render(f, "Auto (UI) - Progreso", lines))?;
@@ -498,28 +512,24 @@ pub fn run_auto_ui<B: Backend>(
         iter += 1;
     }
 
-    // final summary screen
-    let mut lines = vec![
-        format!("Resumen final después de {} partidas:", reps),
-        String::new(),
-    ];
+    // final summary screen - build a Summary and render using auto::summary_lines
+    let mut strat_labels: Vec<String> = Vec::with_capacity(num_players);
     for i in 0..num_players {
-        let name = if i == num_players - 1 {
-            "Banca".to_string()
-        } else {
-            format!("Jugador {}", i + 1)
-        };
-        let alg = crate::strategies::strategy_label(&strat_vec[i]);
-        let w = wins[i];
-        let avg = (total_points[i] as f64) / (reps as f64);
-        lines.push(format!(
-            "{} | {} | Victorias: {} | Busts: {} | Puntos avg: {:.2}",
-            name, alg, w, busts[i], avg
-        ));
+        strat_labels.push(crate::strategies::strategy_label(&strat_vec[i]));
     }
-    lines.push(String::new());
-    lines.push(format!("Empates totales: {}", ties));
+    let summary = crate::auto::Summary {
+        reps,
+        num_players,
+        wins: wins.clone(),
+        wins_per_game: wins_per_game.clone(),
+        per_game_ties,
+        busts: busts.clone(),
+        total_points: total_points.clone(),
+        ties,
+        strat_labels,
+    };
 
+    let lines = crate::auto::summary_lines(&summary);
     terminal.draw(|f| render(f, "Auto (UI) - Resumen", lines))?;
 
     // Wait for a key press to return
@@ -638,21 +648,6 @@ fn render_ui(frame: &mut ratatui::Frame, jugador: &Jugador, banca: &Jugador, app
         .vertical_margin(2)
         .spacing(3)
         .split(main_chunks[2]);
-
-    // Título
-    let titulo = Paragraph::new("♤ ♡ RATJACK ♢ ♧")
-        .style(
-            Style::default()
-                .fg(Color::Green)
-                .add_modifier(Modifier::BOLD),
-        )
-        .alignment(Alignment::Center)
-        .block(
-            Block::default()
-                .borders(Borders::ALL)
-                .border_type(BorderType::Rounded),
-        );
-    frame.render_widget(titulo, main_chunks[0]);
 
     // Mensaje
     let mensaje = Paragraph::new(app.mensaje.clone())

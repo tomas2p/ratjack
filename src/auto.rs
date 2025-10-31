@@ -8,6 +8,8 @@ pub struct Summary {
     pub reps: u32,
     pub num_players: usize,
     pub wins: Vec<u32>,
+    pub wins_per_game: Vec<u32>,
+    pub per_game_ties: u32,
     pub busts: Vec<u32>,
     pub total_points: Vec<u64>,
     pub ties: u32,
@@ -35,9 +37,13 @@ pub(crate) fn simulate(reps: u32, num_players: usize, strategies: Vec<Strategy>)
         strat_labels.push(strategy_label(&strat_vec[i]));
     }
 
+    // Only per-partida metrics: wins_per_game counts sole victories; per_game_ties counts games with multiple winners
     let mut wins = vec![0u32; num_players];
+    let mut wins_per_game = vec![0u32; num_players];
+    let mut per_game_ties = 0u32;
     let mut busts = vec![0u32; num_players];
     let mut total_points = vec![0u64; num_players];
+    // `ties` (per-enfrentamiento) is deprecated in this mode; keep for compatibility but will remain 0
     let mut ties = 0u32;
 
     for _ in 0..reps {
@@ -47,11 +53,7 @@ pub(crate) fn simulate(reps: u32, num_players: usize, strategies: Vec<Strategy>)
         let mut jugadores: Vec<Jugador> = (0..num_players)
             .map(|i| {
                 let mut j = Jugador::nuevo();
-                j.nombre = if i == num_players - 1 {
-                    "Banca".to_string()
-                } else {
-                    format!("Jugador {}", i + 1)
-                };
+                j.nombre = format!("P{}", i + 1);
                 j
             })
             .collect();
@@ -82,29 +84,42 @@ pub(crate) fn simulate(reps: u32, num_players: usize, strategies: Vec<Strategy>)
             }
         }
 
-        // evaluate
-        let bank_idx = num_players - 1;
-        let bank_points = jugadores[bank_idx].puntaje();
-        total_points[bank_idx] += bank_points as u64;
-        if bank_points > 21 {
-            busts[bank_idx] += 1;
+        // evaluate: all-vs-all pairwise comparisons
+        // total_points and bust counters per player
+        for i in 0..num_players {
+            let pts = jugadores[i].puntaje();
+            total_points[i] += pts as u64;
+            if pts > 21 {
+                busts[i] += 1;
+            }
         }
 
-        for i in 0..num_players - 1 {
-            let p_points = jugadores[i].puntaje();
-            total_points[i] += p_points as u64;
-            if p_points > 21 {
-                busts[i] += 1;
-                wins[bank_idx] += 1;
-            } else if bank_points > 21 {
-                wins[i] += 1;
-            } else if p_points > bank_points {
-                wins[i] += 1;
-            } else if bank_points > p_points {
-                wins[bank_idx] += 1;
-            } else {
-                ties += 1;
+        // per-game outcome only (no enfrentamientos): determine top scorers ≤21
+        let mut best_pts: i32 = -1;
+        for i in 0..num_players {
+            let pts = jugadores[i].puntaje() as i32;
+            if pts <= 21 && pts > best_pts {
+                best_pts = pts;
             }
+        }
+        if best_pts >= 0 {
+            // collect winners (could be multiple -> tie)
+            let mut winners: Vec<usize> = Vec::new();
+            for i in 0..num_players {
+                if jugadores[i].puntaje() as i32 == best_pts {
+                    winners.push(i);
+                }
+            }
+            if winners.len() == 1 {
+                wins_per_game[winners[0]] += 1;
+                wins[winners[0]] += 1; // keep wins aligned with per-game wins
+            } else {
+                // multiple winners -> count as per-game tie
+                per_game_ties += 1;
+            }
+        } else {
+            // all busted -> count as tied game
+            per_game_ties += 1;
         }
     }
 
@@ -112,6 +127,8 @@ pub(crate) fn simulate(reps: u32, num_players: usize, strategies: Vec<Strategy>)
         reps,
         num_players,
         wins,
+        wins_per_game,
+        per_game_ties,
         busts,
         total_points,
         ties,
@@ -120,20 +137,107 @@ pub(crate) fn simulate(reps: u32, num_players: usize, strategies: Vec<Strategy>)
 }
 
 pub fn print_summary(summary: &Summary) {
-    println!("Resumen final después de {} partidas:", summary.reps);
-    for i in 0..summary.num_players {
-        println!(
-            "{} | {} | Victorias: {} | Busts: {} | Puntos avg: {:.2}",
-            if i == summary.num_players - 1 {
-                "Banca".to_string()
-            } else {
-                format!("Jugador {}", i + 1)
-            },
-            summary.strat_labels.get(i).cloned().unwrap_or_default(),
-            summary.wins[i],
-            summary.busts[i],
-            (summary.total_points[i] as f64) / (summary.reps as f64)
-        );
+    for line in summary_lines(summary) {
+        println!("{}", line);
     }
-    println!("Empates totales: {}", summary.ties);
+}
+
+pub fn summary_lines(summary: &Summary) -> Vec<String> {
+    let mut lines: Vec<String> = Vec::new();
+    lines.push(format!(
+        "Resumen final después de {} partidas:",
+        summary.reps
+    ));
+    lines.push(String::new());
+
+    // Table header: per-partida victories and percentage
+    lines.push(format!(
+        "{:<3} {:<30} {:>10} {:>8} {:>10}",
+        "ID", "Estrategia", "Vict(part)", "%P", "PtsAvg"
+    ));
+    lines.push("-".repeat(70));
+
+    for i in 0..summary.num_players {
+        let id = format!("{}", i + 1);
+        let strat = summary.strat_labels.get(i).cloned().unwrap_or_default();
+        let vict_part = summary.wins_per_game[i];
+        let pct = if summary.reps > 0 {
+            (vict_part as f64) / (summary.reps as f64) * 100.0
+        } else {
+            0.0
+        };
+        let pts_avg = if summary.reps > 0 {
+            (summary.total_points[i] as f64) / (summary.reps as f64)
+        } else {
+            0.0
+        };
+        lines.push(format!(
+            "{:<3} {:<30} {:>10} {:>7.2} {:>10.2}",
+            id, strat, vict_part, pct, pts_avg
+        ));
+    }
+
+    lines.push(String::new());
+    lines.push(format!(
+        "Partidas empatadas (múltiples ganadores): {}",
+        summary.per_game_ties
+    ));
+
+    // Determine best strategies by metric
+    let mut best_by_partida = 0usize;
+    let mut best_by_partida_pct = -1.0f64;
+    let mut best_by_enf = 0usize;
+    let mut best_by_enf_pct = -1.0f64;
+    for i in 0..summary.num_players {
+        let pct_partida = if summary.reps > 0 {
+            (summary.wins_per_game[i] as f64) / (summary.reps as f64) * 100.0
+        } else {
+            0.0
+        };
+        if pct_partida > best_by_partida_pct {
+            best_by_partida_pct = pct_partida;
+            best_by_partida = i;
+        }
+        // per-opponent percentage: each player has (num_players-1) opponents per game
+        let denom = (summary.reps as f64) * ((summary.num_players - 1) as f64);
+        let pct_enf = if denom > 0.0 {
+            (summary.wins[i] as f64) / denom * 100.0
+        } else {
+            0.0
+        };
+        if pct_enf > best_by_enf_pct {
+            best_by_enf_pct = pct_enf;
+            best_by_enf = i;
+        }
+    }
+
+    let label_partida = &summary.strat_labels[best_by_partida];
+    let label_enf = &summary.strat_labels[best_by_enf];
+    lines.push(String::new());
+    lines.push(format!(
+        "Mejor por partidas: {} ({:.2}%)",
+        label_partida, best_by_partida_pct
+    ));
+    lines.push(format!(
+        "Mejor por enfrentamientos: {} ({:.2}%)",
+        label_enf, best_by_enf_pct
+    ));
+    if best_by_partida == best_by_enf {
+        lines.push(format!(
+            "Conclusión: estrategia consistente — '{}' domina ambas métricas.",
+            label_partida
+        ));
+    } else {
+        lines.push(format!("Conclusión:"));
+        lines.push(format!(
+            " - Si te interesa ganar partidas completas (mayoría en cada partida) prioriza '{}' ({:.2}%).",
+            label_partida, best_by_partida_pct
+        ));
+        lines.push(format!(
+            " - Si prefieres maximizar victorias por enfrentamiento (cada mano contra la banca) prioriza '{}' ({:.2}%).",
+            label_enf, best_by_enf_pct
+        ));
+    }
+
+    lines
 }
