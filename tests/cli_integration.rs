@@ -1,4 +1,3 @@
-use assert_cmd::Command;
 use predicates::prelude::*;
 
 // Integration test: run the binary in headless mode to execute the simulation path without a terminal UI.
