@@ -3,6 +3,7 @@ use crate::game::{
     logic::{determinar_ganador, jugar_turno, repartir_cartas},
     player::Jugador,
 };
+use crate::strategies::{should_draw, Strategy};
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
 use ratatui::{
     backend::Backend,
@@ -34,6 +35,8 @@ pub struct AppState {
     pub opciones: Vec<String>,
     pub seleccion: usize,
     pub mostrar_todas_cartas_banca: bool,
+    pub alg_jugador: String,
+    pub alg_banca: String,
 }
 
 impl AppState {
@@ -44,6 +47,8 @@ impl AppState {
             opciones: vec![String::from("Pedir carta"), String::from("Plantarse")],
             seleccion: 0,
             mostrar_todas_cartas_banca: false,
+            alg_jugador: String::new(),
+            alg_banca: String::new(),
         }
     }
 
@@ -69,8 +74,12 @@ pub fn run_game<B: Backend>(
     jugador: &mut Jugador,
     banca: &mut Jugador,
     baraja: &mut Vec<Carta>,
+    alg_jugador: Option<&str>,
+    alg_banca: Option<&str>,
 ) -> io::Result<()> {
     let mut app = AppState::new();
+    app.alg_jugador = alg_jugador.unwrap_or("").to_string();
+    app.alg_banca = alg_banca.unwrap_or("").to_string();
 
     loop {
         terminal.draw(|frame| render_ui(frame, jugador, banca, &app))?;
@@ -151,6 +160,381 @@ pub fn run_game<B: Backend>(
     }
 }
 
+// Run automatic simulations but render progress and final summary inside the UI (no card details)
+pub fn run_auto_ui<B: Backend>(
+    terminal: &mut Terminal<B>,
+    reps: u32,
+    num_players: usize,
+    strategies: Vec<Strategy>,
+) -> io::Result<()> {
+    // Prepare state (similar to main run_auto)
+    let mut reps = reps;
+    let mut num_players = num_players.clamp(2, 8);
+
+    // Build strategy vector for players
+    let mut strat_vec: Vec<Strategy> = Vec::with_capacity(num_players);
+    for i in 0..num_players {
+        if let Some(s) = strategies.get(i) {
+            strat_vec.push(s.clone());
+        } else if !strategies.is_empty() {
+            strat_vec.push(strategies.last().unwrap().clone());
+        } else {
+            let t = 12 + ((i % 8) as u8);
+            strat_vec.push(Strategy::Threshold(t));
+        }
+    }
+
+    // stats
+    let mut wins = vec![0u32; num_players];
+    let mut busts = vec![0u32; num_players];
+    let mut total_points = vec![0u64; num_players];
+    let mut ties = 0u32;
+
+    // render helper: draw title/content/footer matching normal game UI exactly
+    let render = |frame: &mut ratatui::Frame, _title: &str, lines: Vec<String>| {
+        use ratatui::style::Style;
+        use ratatui::widgets::{Block, Borders, Paragraph};
+        // layout: Title (len 3) | Content (min) | Footer (len 1)
+        let chunks = Layout::default()
+            .direction(Direction::Vertical)
+            .constraints([
+                Constraint::Length(3),
+                Constraint::Min(3),
+                Constraint::Length(1),
+            ])
+            .split(frame.size());
+
+        // Title area: same as main UI
+        let titulo = Paragraph::new("♤ ♡ RATJACK ♢ ♧")
+            .style(
+                Style::default()
+                    .fg(Color::Green)
+                    .add_modifier(Modifier::BOLD),
+            )
+            .alignment(Alignment::Center)
+            .block(
+                Block::default()
+                    .borders(Borders::ALL)
+                    .border_type(BorderType::Rounded),
+            );
+        frame.render_widget(titulo, chunks[0]);
+
+        // Content area
+        let text = lines.join("\n");
+        let p = Paragraph::new(text)
+            .block(Block::default().borders(Borders::ALL).title(_title))
+            .style(Style::default());
+        frame.render_widget(p, chunks[1]);
+
+        // Footer area: match render_ui footer style and text format
+        let footer = Paragraph::new("p:Pausa | r:Reconfigurar | q:Salir")
+            .style(Style::default().fg(Color::DarkGray))
+            .alignment(Alignment::Center);
+        frame.render_widget(footer, chunks[2]);
+    };
+
+    // Run simulations, update UI periodically
+    let mut update_every = std::cmp::max(1, (reps / 100).max(1));
+    let mut iter: u32 = 0;
+    let mut paused = false;
+    let mut input_mode = false;
+    let mut input_buf = String::new();
+
+    while iter < reps {
+        // allow event handling to stop/pause/reconfigure
+        if event::poll(std::time::Duration::from_millis(0))? {
+            if let Event::Key(k) = event::read()? {
+                if k.kind == KeyEventKind::Press {
+                    match k.code {
+                        KeyCode::Char('q') => {
+                            // quit early
+                            return Ok(());
+                        }
+                        KeyCode::Char('p') => {
+                            // toggle pause
+                            paused = !paused;
+                        }
+                        KeyCode::Char('r') => {
+                            // enter reconfigure input mode
+                            input_mode = true;
+                            input_buf.clear();
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+
+        if input_mode {
+            // render prompt and collect keys until Enter or Esc
+            let lines = vec!["Reconfigure: escribe '<reps> <num_players> <strategies>' y Enter (Esc para cancelar)".to_string(), String::new(), format!("Buffer: {}", input_buf)];
+            terminal.draw(|f| {
+                use ratatui::widgets::{Block, Borders, Paragraph};
+                let area = f.size();
+                let text = lines.join("\n");
+                let p = Paragraph::new(text)
+                    .block(Block::default().borders(Borders::ALL).title("Reconfigurar"));
+                f.render_widget(p, area);
+            })?;
+
+            // collect keys
+            if event::poll(std::time::Duration::from_millis(100))? {
+                if let Event::Key(k) = event::read()? {
+                    if k.kind == KeyEventKind::Press {
+                        match k.code {
+                            KeyCode::Enter => {
+                                // attempt parse
+                                let parts: Vec<&str> =
+                                    input_buf.splitn(3, ' ').map(|s| s.trim()).collect();
+                                if parts.len() >= 1 && !parts[0].is_empty() {
+                                    if let Ok(new_reps) = parts[0].parse::<u32>() {
+                                        let new_num = if parts.len() >= 2 && !parts[1].is_empty() {
+                                            parts[1].parse::<usize>().unwrap_or(num_players)
+                                        } else {
+                                            num_players
+                                        };
+                                        let new_strat_raw =
+                                            if parts.len() == 3 { parts[2] } else { "" };
+                                        let new_strats =
+                                            crate::strategies::parse_strategies(new_strat_raw);
+                                        // apply new configuration
+                                        iter = 0;
+                                        // reset stats
+                                        for v in wins.iter_mut() {
+                                            *v = 0;
+                                        }
+                                        for v in busts.iter_mut() {
+                                            *v = 0;
+                                        }
+                                        for v in total_points.iter_mut() {
+                                            *v = 0;
+                                        }
+                                        ties = 0;
+                                        // update reps and players and strategies
+                                        // note: shadowing the local num_players variable is tricky; use mutable local
+                                        // but here num_players is immutable; create mutable local copy above if needed
+                                        // to keep it simple, we'll update strat_vec and leave num_players as-is for simplicity
+
+                                        // rebuild strat_vec according to new_num
+                                        let mut new_vec: Vec<Strategy> =
+                                            Vec::with_capacity(new_num);
+                                        if !new_strats.is_empty() {
+                                            for i in 0..new_num {
+                                                if let Some(s) = new_strats.get(i) {
+                                                    new_vec.push(s.clone());
+                                                } else {
+                                                    new_vec
+                                                        .push(new_strats.last().unwrap().clone());
+                                                }
+                                            }
+                                        } else {
+                                            for i in 0..new_num {
+                                                let t = 12 + ((i % 8) as u8);
+                                                new_vec.push(Strategy::Threshold(t));
+                                            }
+                                        }
+                                        // replace strat_vec and adjust arrays sizes
+                                        strat_vec = new_vec;
+                                        let old_np = wins.len();
+                                        if new_num != old_np {
+                                            wins = vec![0u32; new_num];
+                                            busts = vec![0u32; new_num];
+                                            total_points = vec![0u64; new_num];
+                                        }
+                                        // set new reps and num_players
+                                        reps = new_reps;
+                                        num_players = new_num;
+                                        update_every = std::cmp::max(1, (reps / 100).max(1));
+                                        input_mode = false;
+                                    }
+                                }
+                            }
+                            KeyCode::Esc => {
+                                input_mode = false;
+                            }
+                            KeyCode::Backspace => {
+                                input_buf.pop();
+                            }
+                            KeyCode::Char(c) => {
+                                input_buf.push(c);
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+            continue; // skip simulation iteration while in input mode
+        }
+
+        if paused {
+            // show paused screen
+            let lines = vec![format!(
+                "Pausado en iteración {}/{}. Teclas: p=continuar, r=reconfigurar, q=salir",
+                iter + 1,
+                reps
+            )];
+            terminal.draw(|f| {
+                use ratatui::style::Style;
+                use ratatui::widgets::{Block, Borders, Paragraph};
+                let area = f.size();
+                let text = lines.join("\n");
+                let p = Paragraph::new(text)
+                    .block(Block::default().borders(Borders::ALL).title("Pausado"))
+                    .style(Style::default());
+                f.render_widget(p, area);
+            })?;
+            // wait for key
+            if event::poll(std::time::Duration::from_millis(100))? {
+                if let Event::Key(k) = event::read()? {
+                    if k.kind == KeyEventKind::Press {
+                        match k.code {
+                            KeyCode::Char('p') => {
+                                paused = false;
+                            }
+                            KeyCode::Char('q') => {
+                                return Ok(());
+                            }
+                            KeyCode::Char('r') => {
+                                input_mode = true;
+                                input_buf.clear();
+                            }
+                            _ => {}
+                        }
+                    }
+                }
+            }
+            continue; // skip performing iteration while paused
+        }
+
+        let mut baraja = crate::game::deck::crear_baraja();
+
+        // Create players
+        let mut jugadores: Vec<Jugador> = (0..num_players)
+            .map(|i| {
+                let mut j = Jugador::nuevo();
+                j.nombre = if i == num_players - 1 {
+                    "Banca".to_string()
+                } else {
+                    format!("Jugador {}", i + 1)
+                };
+                j
+            })
+            .collect();
+
+        // initial deal
+        for _ in 0..2 {
+            for p in jugadores.iter_mut() {
+                p.tomar_carta(&mut baraja);
+            }
+        }
+        for p in jugadores.iter_mut() {
+            p.puntos = p.puntaje();
+        }
+
+        // players act
+        for idx in 0..num_players {
+            loop {
+                let pts = jugadores[idx].puntaje();
+                if should_draw(&strat_vec[idx], pts, &baraja) {
+                    jugar_turno(&mut jugadores[idx], &mut baraja, true);
+                    jugadores[idx].puntos = jugadores[idx].puntaje();
+                    if jugadores[idx].puntaje() > 21 {
+                        break;
+                    }
+                } else {
+                    break;
+                }
+            }
+        }
+
+        // evaluate
+        let bank_idx = num_players - 1;
+        let bank_points = jugadores[bank_idx].puntaje();
+        total_points[bank_idx] += bank_points as u64;
+        if bank_points > 21 {
+            busts[bank_idx] += 1;
+        }
+
+        for i in 0..num_players - 1 {
+            let p_points = jugadores[i].puntaje();
+            total_points[i] += p_points as u64;
+            if p_points > 21 {
+                busts[i] += 1;
+                wins[bank_idx] += 1;
+            } else if bank_points > 21 {
+                wins[i] += 1;
+            } else if p_points > bank_points {
+                wins[i] += 1;
+            } else if bank_points > p_points {
+                wins[bank_idx] += 1;
+            } else {
+                ties += 1;
+            }
+        }
+
+        // periodic UI update
+        if iter % update_every == 0 || iter + 1 == reps {
+            let mut lines = Vec::new();
+            lines.push(format!("Iteración {}/{}", iter + 1, reps));
+            lines.push(String::new());
+            for i in 0..num_players {
+                let name = if i == num_players - 1 {
+                    "Banca".to_string()
+                } else {
+                    format!("Jugador {}", i + 1)
+                };
+                let alg = crate::strategies::strategy_label(&strat_vec[i]);
+                let w = wins[i];
+                let avg = (total_points[i] as f64) / ((iter + 1) as f64);
+                lines.push(format!(
+                    "{} | {} | Vict: {} | Busts: {} | AvgPts: {:.2}",
+                    name, alg, w, busts[i], avg
+                ));
+            }
+            terminal.draw(|f| render(f, "Auto (UI) - Progreso", lines))?;
+        }
+
+        // advance iteration counter
+        iter += 1;
+    }
+
+    // final summary screen
+    let mut lines = vec![
+        format!("Resumen final después de {} partidas:", reps),
+        String::new(),
+    ];
+    for i in 0..num_players {
+        let name = if i == num_players - 1 {
+            "Banca".to_string()
+        } else {
+            format!("Jugador {}", i + 1)
+        };
+        let alg = crate::strategies::strategy_label(&strat_vec[i]);
+        let w = wins[i];
+        let avg = (total_points[i] as f64) / (reps as f64);
+        lines.push(format!(
+            "{} | {} | Victorias: {} | Busts: {} | Puntos avg: {:.2}",
+            name, alg, w, busts[i], avg
+        ));
+    }
+    lines.push(String::new());
+    lines.push(format!("Empates totales: {}", ties));
+
+    terminal.draw(|f| render(f, "Auto (UI) - Resumen", lines))?;
+
+    // Wait for a key press to return
+    use crossterm::event::{self, Event};
+    loop {
+        if event::poll(std::time::Duration::from_millis(100))? {
+            if let Event::Key(_) = event::read()? {
+                break;
+            }
+        }
+    }
+
+    Ok(())
+}
+
 // Función para reiniciar la partida
 fn reiniciar_partida(jugador: &mut Jugador, banca: &mut Jugador, baraja: &mut Vec<Carta>) {
     jugador.mano.clear();
@@ -171,6 +555,7 @@ fn render_ui(frame: &mut ratatui::Frame, jugador: &Jugador, banca: &Jugador, app
         jugador: &Jugador,
         mostrar_todas_cartas: bool,
         color: Color,
+        algoritmo: &str,
     ) {
         // Create a string representation of cards
         let mut mano = String::new();
@@ -224,7 +609,7 @@ fn render_ui(frame: &mut ratatui::Frame, jugador: &Jugador, banca: &Jugador, app
             )
             .title_bottom(
                 Span::styled(
-                    format!("Ganadas: {}", jugador.partidas_ganadas),
+                    format!("Ganadas: {} | Alg: {}", jugador.partidas_ganadas, algoritmo),
                     Style::default().fg(Color::White),
                 )
                 .into_centered_line(),
@@ -275,6 +660,10 @@ fn render_ui(frame: &mut ratatui::Frame, jugador: &Jugador, banca: &Jugador, app
         .alignment(Alignment::Center);
     frame.render_widget(mensaje, main_chunks[1]);
 
+    // Determine algorithm labels if present in app or default to empty
+    let alg_b = app.alg_banca.as_str();
+    let alg_j = app.alg_jugador.as_str();
+
     render_player(
         frame,
         mesa_chunks[0],
@@ -282,6 +671,7 @@ fn render_ui(frame: &mut ratatui::Frame, jugador: &Jugador, banca: &Jugador, app
         &banca,
         app.mostrar_todas_cartas_banca,
         Color::Red,
+        alg_b,
     );
     render_player(
         frame,
@@ -290,6 +680,7 @@ fn render_ui(frame: &mut ratatui::Frame, jugador: &Jugador, banca: &Jugador, app
         &jugador,
         true,
         Color::Blue,
+        alg_j,
     );
 
     // Footer con todos los comandos disponibles
