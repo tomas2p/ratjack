@@ -1,4 +1,4 @@
-use crate::auto::{run_simulation, summary_lines, Summary};
+use crate::auto::{summary_lines, Simulator, Summary};
 use crate::game::{
     deck::Carta,
     logic::{determinar_ganador, jugar_turno, repartir_cartas},
@@ -10,7 +10,7 @@ use ratatui::{
     backend::Backend,
     layout::{Alignment, Constraint, Direction, Layout, Rect},
     style::{Color, Modifier, Style},
-    text::{Line, Span},
+    text::Line,
     widgets::{Block, BorderType, Borders, Paragraph},
     Frame, Terminal,
 };
@@ -194,7 +194,8 @@ pub fn run_auto_ui<B: Backend>(
         });
     };
 
-    let summary = run_simulation(reps, num_players, strategies, on_progress);
+    let simulator = Simulator::new(reps, num_players, strategies);
+    let summary = simulator.run(on_progress);
 
     terminal.draw(|f| {
         let chunks = Layout::default()
@@ -264,7 +265,7 @@ fn render_ui(frame: &mut Frame, jugador: &Jugador, banca: &Jugador, app: &AppSta
         .constraints([
             Constraint::Length(3),
             Constraint::Length(1),
-            Constraint::Min(3),
+            Constraint::Min(8),
             Constraint::Length(1),
         ])
         .split(frame.size());
@@ -309,6 +310,62 @@ fn render_ui(frame: &mut Frame, jugador: &Jugador, banca: &Jugador, app: &AppSta
     render_footer(frame, main_chunks[3], footer_text);
 }
 
+fn get_card_art(carta: &crate::game::deck::Carta, visible: bool) -> Vec<String> {
+    if !visible {
+        return vec![
+            "┌─────┐".to_string(),
+            "│?   ?│".to_string(),
+            "│  ?  │".to_string(),
+            "│?   ?│".to_string(),
+            "└─────┘".to_string(),
+        ];
+    }
+    let val = carta.valor_str();
+    let symbol = carta.simbolo();
+    let val_top = if val == "10" {
+        "10".to_string()
+    } else {
+        format!("{} ", val)
+    };
+    let val_bot = if val == "10" {
+        "10".to_string()
+    } else {
+        format!(" {}", val)
+    };
+
+    vec![
+        "┌─────┐".to_string(),
+        format!("│{}  {}│", val_top, symbol),
+        format!("│  {}  │", symbol),
+        format!("│{}  {}│", symbol, val_bot),
+        "└─────┘".to_string(),
+    ]
+}
+
+fn render_card_lines(jugador: &Jugador, mostrar_todas: bool) -> Vec<Line<'static>> {
+    if jugador.mano.is_empty() {
+        return vec![Line::from("[Sin cartas]")];
+    }
+
+    let card_arts: Vec<Vec<String>> = jugador
+        .mano
+        .iter()
+        .enumerate()
+        .map(|(i, c)| get_card_art(c, i == 0 || mostrar_todas))
+        .collect();
+
+    let mut lines = Vec::new();
+    for line_idx in 0..5 {
+        let mut row = String::new();
+        for art in &card_arts {
+            row.push_str(&art[line_idx]);
+            row.push(' ');
+        }
+        lines.push(Line::from(row));
+    }
+    lines
+}
+
 fn render_player_panel(
     frame: &mut Frame,
     area: Rect,
@@ -318,31 +375,16 @@ fn render_player_panel(
     color: Color,
     alg: &str,
 ) {
-    let mut lines = Vec::new();
+    let mut lines = render_card_lines(jugador, mostrar_todas);
 
-    if jugador.mano.is_empty() {
-        lines.push(Line::from("[Sin cartas]"));
-    } else {
-        // Renderizado simplificado de cartas para ahorrar espacio y mejorar legibilidad
-        let mut card_row = Vec::new();
-        for (i, carta) in jugador.mano.iter().enumerate() {
-            if i == 0 || mostrar_todas {
-                let symbol = carta.simbolo();
-                let val = carta.valor_str();
-                let style = if matches!(
-                    carta.palo,
-                    crate::game::deck::Palo::Corazones | crate::game::deck::Palo::Diamantes
-                ) {
-                    Style::default().fg(Color::Red)
-                } else {
-                    Style::default().fg(Color::White)
-                };
-                card_row.push(Span::styled(format!("[{} {}] ", val, symbol), style));
-            } else {
-                card_row.push(Span::styled("[? ?] ", Style::default().fg(Color::Yellow)));
-            }
+    // Centrado vertical simple añadiendo líneas vacías
+    let content_height = lines.len() as u16;
+    let available_height = area.height.saturating_sub(2); // Restar borders
+    if available_height > content_height {
+        let padding = (available_height - content_height) / 2;
+        for _ in 0..padding {
+            lines.insert(0, Line::from(""));
         }
-        lines.push(Line::from(card_row));
     }
 
     let puntos_str = if mostrar_todas {
