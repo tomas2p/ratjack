@@ -81,7 +81,30 @@ pub fn run_game<B: Backend>(
     app.alg_jugador = alg_jugador.unwrap_or("").to_string();
     app.alg_banca = alg_banca.unwrap_or("").to_string();
 
+    // Check initial deal for 21
+    jugador.puntos = jugador.puntaje();
+    if jugador.puntos == 21 {
+        app.mensaje = "¡21! Turno de la banca automático".to_string();
+        app.estado = GameState::TurnoBanca;
+    }
+
     loop {
+        // If state is TurnoBanca, execute bank turn immediately without waiting for a key
+        if matches!(app.estado, GameState::TurnoBanca) {
+            terminal.draw(|frame| render_ui(frame, jugador, banca, &app))?;
+            // La banca juega automáticamente
+            while banca.puntaje() < 17 {
+                jugar_turno(banca, baraja, true);
+                banca.puntos = banca.puntaje();
+            }
+
+            // Determinar ganador
+            let resultado = determinar_ganador(jugador, banca);
+            app.mensaje = resultado;
+            app.estado = GameState::FinJuego;
+            app.actualizar_opciones();
+        }
+
         terminal.draw(|frame| render_ui(frame, jugador, banca, &app))?;
 
         if let Event::Key(key) = event::read()? {
@@ -91,6 +114,11 @@ pub fn run_game<B: Backend>(
                         if key.code == KeyCode::Enter || key.code == KeyCode::Char(' ') {
                             app.estado = GameState::TurnoJugador;
                             app.actualizar_opciones();
+                            jugador.puntos = jugador.puntaje();
+                            if jugador.puntos == 21 {
+                                app.mensaje = "¡21! Turno de la banca automático".to_string();
+                                app.estado = GameState::TurnoBanca;
+                            }
                         }
                         if key.code == KeyCode::Char('q') {
                             return Ok(());
@@ -106,6 +134,9 @@ pub fn run_game<B: Backend>(
                                     app.mensaje = determinar_ganador(jugador, banca);
                                     app.estado = GameState::FinJuego;
                                     app.actualizar_opciones();
+                                } else if jugador.puntos == 21 {
+                                    app.mensaje = "¡21! Turno de la banca automático".to_string();
+                                    app.estado = GameState::TurnoBanca;
                                 }
                             }
                             KeyCode::Char('2') | KeyCode::Char('s') => {
@@ -120,21 +151,6 @@ pub fn run_game<B: Backend>(
                         }
                     }
                     GameState::TurnoBanca => {
-                        // La banca juega automáticamente
-                        while banca.puntaje() < 17 {
-                            jugar_turno(banca, baraja, true);
-                            banca.puntos = banca.puntaje();
-                        }
-
-                        // Determinar ganador
-                        let resultado = determinar_ganador(jugador, banca);
-                        app.mensaje = resultado;
-                        app.estado = GameState::FinJuego;
-                        app.actualizar_opciones();
-
-                        // Simplemente mostrar el resultado y esperar entrada del usuario
-                        terminal.draw(|frame| render_ui(frame, jugador, banca, &app))?;
-
                         if key.code == KeyCode::Char('q') {
                             return Ok(());
                         }
@@ -147,6 +163,11 @@ pub fn run_game<B: Backend>(
                                 app.mensaje = "¡Nueva partida!".to_string();
                                 app.estado = GameState::TurnoJugador;
                                 app.actualizar_opciones();
+                                jugador.puntos = jugador.puntaje();
+                                if jugador.puntos == 21 {
+                                    app.mensaje = "¡21! Turno de la banca automático".to_string();
+                                    app.estado = GameState::TurnoBanca;
+                                }
                             }
                             KeyCode::Char('q') => {
                                 return Ok(());
@@ -557,6 +578,36 @@ fn reiniciar_partida(jugador: &mut Jugador, banca: &mut Jugador, baraja: &mut Ve
 }
 
 fn render_ui(frame: &mut ratatui::Frame, jugador: &Jugador, banca: &Jugador, app: &AppState) {
+    struct CardLines {
+        lines: [String; 5],
+    }
+
+    impl CardLines {
+        fn face_up(carta: &Carta) -> Self {
+            Self {
+                lines: [
+                    String::from("╭─────╮"),
+                    format!("│{:^5}│", carta.valor_str()),
+                    format!("│{:^5}│", carta.simbolo()),
+                    format!("│{:^5}│", carta.valor_str()),
+                    String::from("╰─────╯"),
+                ],
+            }
+        }
+
+        fn face_down() -> Self {
+            Self {
+                lines: [
+                    String::from("╭─────╮"),
+                    String::from("│  ?  │"),
+                    String::from("│  ?  │"),
+                    String::from("│  ?  │"),
+                    String::from("╰─────╯"),
+                ],
+            }
+        }
+    }
+
     // Function to render a player
     fn render_player(
         frame: &mut ratatui::Frame,
@@ -573,36 +624,49 @@ fn render_ui(frame: &mut ratatui::Frame, jugador: &Jugador, banca: &Jugador, app
         if jugador.mano.is_empty() {
             mano = "[Sin cartas]".to_string();
         } else {
-            // Define how many cards to show
-            let cards_to_show = if nombre == "Banca" && !mostrar_todas_cartas {
-                1 // Only show first card for the bank when hidden
+            let mut card_list = Vec::new();
+            if nombre == "Banca" && !mostrar_todas_cartas {
+                if !jugador.mano.is_empty() {
+                    card_list.push(CardLines::face_up(&jugador.mano[0]));
+                }
+                for _ in 1..jugador.mano.len() {
+                    card_list.push(CardLines::face_down());
+                }
             } else {
-                jugador.mano.len() // Show all cards otherwise
-            };
-
-            // Add visible cards
-            for i in 0..cards_to_show {
-                let carta = &jugador.mano[i];
-                let carta_str = format!(
-                    "\n╭─────╮\n│{:^5}│\n│{:^5}│\n│{:^5}│\n╰─────╯\n",
-                    carta.valor_str(),
-                    carta.simbolo(),
-                    carta.valor_str()
-                );
-                mano.push_str(&carta_str);
-                mano.push(' ');
+                for carta in &jugador.mano {
+                    card_list.push(CardLines::face_up(carta));
+                }
             }
 
-            // Add hidden cards for the bank
-            if nombre == "Banca" && !mostrar_todas_cartas && jugador.mano.len() > 1 {
-                mano.push_str(&format!("\n+ ocultas"));
+            // Render cards horizontally in chunks of 4 per row to avoid vertical clipping
+            for chunk in card_list.chunks(4) {
+                let mut row_lines = [
+                    String::new(),
+                    String::new(),
+                    String::new(),
+                    String::new(),
+                    String::new(),
+                ];
+                for (i, card) in chunk.iter().enumerate() {
+                    for l in 0..5 {
+                        if i > 0 {
+                            row_lines[l].push(' ');
+                        }
+                        row_lines[l].push_str(&card.lines[l]);
+                    }
+                }
+                for l in 0..5 {
+                    mano.push_str(&row_lines[l]);
+                    mano.push('\n');
+                }
+                mano.push('\n');
             }
         }
 
         let puntos = if mostrar_todas_cartas {
             jugador.puntos.to_string()
         } else {
-            "?".to_string()
+            format!("? ({} cartas)", jugador.mano.len())
         };
 
         let block = Block::default()
