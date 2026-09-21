@@ -704,9 +704,10 @@ fn render_ui(frame: &mut ratatui::Frame, jugador: &Jugador, banca: &Jugador, app
             }
 
             let inner_width = area.width.saturating_sub(2) as usize;
+            let total_chunks = (card_list.len() + 3) / 4;
 
             // Render cards horizontally in chunks of 4 per row, precisely centered
-            for chunk in card_list.chunks(4) {
+            for (chunk_idx, chunk) in card_list.chunks(4).enumerate() {
                 let k = chunk.len();
                 let row_width = k * 7 + k.saturating_sub(1);
                 let padding = inner_width.saturating_sub(row_width) / 2;
@@ -728,9 +729,22 @@ fn render_ui(frame: &mut ratatui::Frame, jugador: &Jugador, banca: &Jugador, app
                 for l in 0..5 {
                     text_lines.push(ratatui::text::Line::from(row_spans[l].clone()));
                 }
-                text_lines.push(ratatui::text::Line::from(""));
+                if chunk_idx + 1 < total_chunks {
+                    text_lines.push(ratatui::text::Line::from(""));
+                }
             }
         }
+
+        // Vertical centering
+        let inner_height = area.height.saturating_sub(2) as usize;
+        let content_height = text_lines.len();
+        let v_padding = inner_height.saturating_sub(content_height) / 2;
+
+        let mut final_lines = Vec::with_capacity(v_padding + content_height);
+        for _ in 0..v_padding {
+            final_lines.push(ratatui::text::Line::from(""));
+        }
+        final_lines.extend(text_lines);
 
         let puntos = if mostrar_todas_cartas {
             jugador.puntos.to_string()
@@ -758,7 +772,7 @@ fn render_ui(frame: &mut ratatui::Frame, jugador: &Jugador, banca: &Jugador, app
                 .into_centered_line(),
             );
 
-        let widget = Paragraph::new(text_lines)
+        let widget = Paragraph::new(final_lines)
             .style(Style::default().fg(Color::White))
             .block(block);
         frame.render_widget(widget, area);
