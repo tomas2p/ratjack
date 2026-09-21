@@ -3,137 +3,150 @@ use crate::game::logic::jugar_turno;
 use crate::game::player::Jugador;
 use crate::strategies::{should_draw, strategy_label, Strategy};
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Summary {
     pub reps: u32,
     pub num_players: usize,
-    pub wins: Vec<u32>,
     pub wins_per_game: Vec<u32>,
     pub per_game_ties: u32,
     pub busts: Vec<u32>,
     pub total_points: Vec<u64>,
-    pub ties: u32,
     pub strat_labels: Vec<String>,
 }
 
-// Simulate `reps` games with `num_players` using provided strategies vector.
-// This function is crate-visible (pub(crate)) so it can be called from the UI, but we avoid exposing
-// it as a public CLI helper to encourage running simulations through the UI.
-pub(crate) fn simulate(reps: u32, num_players: usize, strategies: Vec<Strategy>) -> Summary {
-    let num_players = num_players.clamp(2, 8);
-
-    // Build strategy vector
-    let mut strat_vec: Vec<Strategy> = Vec::with_capacity(num_players);
-    let mut strat_labels: Vec<String> = Vec::with_capacity(num_players);
-    for i in 0..num_players {
-        if let Some(s) = strategies.get(i) {
-            strat_vec.push(s.clone());
-        } else if !strategies.is_empty() {
-            strat_vec.push(strategies.last().unwrap().clone());
-        } else {
-            let t = 12 + ((i % 8) as u8);
-            strat_vec.push(Strategy::Threshold(t));
+impl Summary {
+    pub fn new(num_players: usize, reps: u32, labels: Vec<String>) -> Self {
+        Self {
+            reps,
+            num_players,
+            wins_per_game: vec![0; num_players],
+            per_game_ties: 0,
+            busts: vec![0; num_players],
+            total_points: vec![0; num_players],
+            strat_labels: labels,
         }
-        strat_labels.push(strategy_label(&strat_vec[i]));
+    }
+}
+
+pub struct Simulator {
+    pub reps: u32,
+    pub num_players: usize,
+    pub strategies: Vec<Strategy>,
+}
+
+impl Simulator {
+    pub fn new(reps: u32, num_players: usize, strategies: Vec<Strategy>) -> Self {
+        Self {
+            reps,
+            num_players,
+            strategies,
+        }
     }
 
-    // Only per-partida metrics: wins_per_game counts sole victories; per_game_ties counts games with multiple winners
-    let mut wins = vec![0u32; num_players];
-    let mut wins_per_game = vec![0u32; num_players];
-    let mut per_game_ties = 0u32;
-    let mut busts = vec![0u32; num_players];
-    let mut total_points = vec![0u64; num_players];
-    // `ties` (per-enfrentamiento) is deprecated in this mode; keep for compatibility but will remain 0
-    let mut ties = 0u32;
+    pub fn run<F>(&self, mut on_progress: F) -> Summary
+    where
+        F: FnMut(u32, &Summary),
+    {
+        let num_players = self.num_players.clamp(2, 8);
+        let mut strat_vec = Vec::with_capacity(num_players);
+        let mut labels = Vec::with_capacity(num_players);
 
-    for _ in 0..reps {
-        let mut baraja = crear_baraja();
+        for i in 0..num_players {
+            let s = if let Some(st) = self.strategies.get(i) {
+                st.clone()
+            } else if !self.strategies.is_empty() {
+                self.strategies.last().unwrap().clone()
+            } else {
+                Strategy::Threshold(12 + (i % 8) as u8)
+            };
+            labels.push(strategy_label(&s));
+            strat_vec.push(s);
+        }
 
-        // Create players
-        let mut jugadores: Vec<Jugador> = (0..num_players)
-            .map(|i| {
-                let mut j = Jugador::nuevo();
-                j.nombre = format!("P{}", i + 1);
-                j
-            })
-            .collect();
+        let mut summary = Summary::new(num_players, self.reps, labels);
+        let update_every = (self.reps / 100).max(1);
 
-        // initial deal
-        for _ in 0..2 {
-            for p in jugadores.iter_mut() {
-                p.tomar_carta(&mut baraja);
+        for iter in 0..self.reps {
+            let mut baraja = crear_baraja();
+            let mut jugadores: Vec<Jugador> = (0..num_players)
+                .map(|i| {
+                    let mut j = Jugador::nuevo();
+                    j.nombre = format!("P{}", i + 1);
+                    j
+                })
+                .collect();
+
+            // Reparto inicial
+            for _ in 0..2 {
+                for p in jugadores.iter_mut() {
+                    p.tomar_carta(&mut baraja);
+                }
             }
-        }
-        for p in jugadores.iter_mut() {
-            p.puntos = p.puntaje();
-        }
 
-        // players act
-        for idx in 0..num_players {
-            loop {
-                let pts = jugadores[idx].puntaje();
-                if should_draw(&strat_vec[idx], pts, &baraja) {
+            // Jugadores actúan
+            for idx in 0..num_players {
+                while should_draw(&strat_vec[idx], jugadores[idx].puntos(), &baraja) {
                     jugar_turno(&mut jugadores[idx], &mut baraja, true);
-                    jugadores[idx].puntos = jugadores[idx].puntaje();
-                    if jugadores[idx].puntaje() > 21 {
+                    if jugadores[idx].puntos() > 21 {
                         break;
                     }
-                } else {
-                    break;
                 }
             }
-        }
 
-        // evaluate: all-vs-all pairwise comparisons
-        // total_points and bust counters per player
-        for i in 0..num_players {
-            let pts = jugadores[i].puntaje();
-            total_points[i] += pts as u64;
-            if pts > 21 {
-                busts[i] += 1;
-            }
-        }
-
-        // per-game outcome only (no enfrentamientos): determine top scorers ≤21
-        let mut best_pts: i32 = -1;
-        for i in 0..num_players {
-            let pts = jugadores[i].puntaje() as i32;
-            if pts <= 21 && pts > best_pts {
-                best_pts = pts;
-            }
-        }
-        if best_pts >= 0 {
-            // collect winners (could be multiple -> tie)
-            let mut winners: Vec<usize> = Vec::new();
+            // Evaluación
+            let mut best_pts: i32 = -1;
             for i in 0..num_players {
-                if jugadores[i].puntaje() as i32 == best_pts {
-                    winners.push(i);
+                let pts = jugadores[i].puntos();
+                summary.total_points[i] += pts as u64;
+                if pts > 21 {
+                    summary.busts[i] += 1;
+                } else if (pts as i32) > best_pts {
+                    best_pts = pts as i32;
                 }
             }
-            if winners.len() == 1 {
-                wins_per_game[winners[0]] += 1;
-                wins[winners[0]] += 1; // keep wins aligned with per-game wins
-            } else {
-                // multiple winners -> count as per-game tie
-                per_game_ties += 1;
-            }
-        } else {
-            // all busted -> count as tied game
-            per_game_ties += 1;
-        }
-    }
 
-    Summary {
-        reps,
-        num_players,
-        wins,
-        wins_per_game,
-        per_game_ties,
-        busts,
-        total_points,
-        ties,
-        strat_labels,
+            if best_pts >= 0 {
+                let mut winners = Vec::new();
+                for i in 0..num_players {
+                    if jugadores[i].puntos() as i32 == best_pts {
+                        winners.push(i);
+                    }
+                }
+                if winners.len() == 1 {
+                    summary.wins_per_game[winners[0]] += 1;
+                } else {
+                    summary.per_game_ties += 1;
+                }
+            } else {
+                summary.per_game_ties += 1;
+            }
+
+            if (iter + 1) % update_every == 0 || iter + 1 == self.reps {
+                on_progress(iter + 1, &summary);
+            }
+        }
+
+        summary
     }
+}
+
+/// Ejecuta la simulación completa con un callback opcional para el progreso.
+pub fn run_simulation<F>(
+    reps: u32,
+    num_players: usize,
+    strategies: Vec<Strategy>,
+    on_progress: F,
+) -> Summary
+where
+    F: FnMut(u32, &Summary),
+{
+    let simulator = Simulator::new(reps, num_players, strategies);
+    simulator.run(on_progress)
+}
+
+// Función para compatibilidad con main.rs (legacy simulate)
+pub(crate) fn simulate(reps: u32, num_players: usize, strategies: Vec<Strategy>) -> Summary {
+    run_simulation(reps, num_players, strategies, |_, _| {})
 }
 
 pub fn print_summary(summary: &Summary) {
@@ -143,14 +156,13 @@ pub fn print_summary(summary: &Summary) {
 }
 
 pub fn summary_lines(summary: &Summary) -> Vec<String> {
-    let mut lines: Vec<String> = Vec::new();
+    let mut lines = Vec::new();
     lines.push(format!(
         "Resumen final después de {} partidas:",
         summary.reps
     ));
     lines.push(String::new());
 
-    // Table header: per-partida victories and percentage
     lines.push(format!(
         "{:<3} {:<30} {:>10} {:>8} {:>10}",
         "ID", "Estrategia", "Vict(part)", "%P", "PtsAvg"
@@ -158,86 +170,49 @@ pub fn summary_lines(summary: &Summary) -> Vec<String> {
     lines.push("-".repeat(70));
 
     for i in 0..summary.num_players {
-        let id = format!("{}", i + 1);
-        let strat = summary.strat_labels.get(i).cloned().unwrap_or_default();
-        let vict_part = summary.wins_per_game[i];
+        let vict = summary.wins_per_game[i];
         let pct = if summary.reps > 0 {
-            (vict_part as f64) / (summary.reps as f64) * 100.0
+            (vict as f64) / (summary.reps as f64) * 100.0
         } else {
             0.0
         };
-        let pts_avg = if summary.reps > 0 {
+        let avg = if summary.reps > 0 {
             (summary.total_points[i] as f64) / (summary.reps as f64)
         } else {
             0.0
         };
         lines.push(format!(
             "{:<3} {:<30} {:>10} {:>7.2} {:>10.2}",
-            id, strat, vict_part, pct, pts_avg
+            i + 1,
+            summary.strat_labels[i],
+            vict,
+            pct,
+            avg
         ));
     }
 
     lines.push(String::new());
     lines.push(format!(
-        "Partidas empatadas (múltiples ganadores): {}",
+        "Partidas empatadas (múltiples ganadores o todos bust): {}",
         summary.per_game_ties
     ));
 
-    // Determine best strategies by metric
-    let mut best_by_partida = 0usize;
-    let mut best_by_partida_pct = -1.0f64;
-    let mut best_by_enf = 0usize;
-    let mut best_by_enf_pct = -1.0f64;
-    for i in 0..summary.num_players {
-        let pct_partida = if summary.reps > 0 {
-            (summary.wins_per_game[i] as f64) / (summary.reps as f64) * 100.0
-        } else {
-            0.0
-        };
-        if pct_partida > best_by_partida_pct {
-            best_by_partida_pct = pct_partida;
-            best_by_partida = i;
-        }
-        // per-opponent percentage: each player has (num_players-1) opponents per game
-        let denom = (summary.reps as f64) * ((summary.num_players - 1) as f64);
-        let pct_enf = if denom > 0.0 {
-            (summary.wins[i] as f64) / denom * 100.0
-        } else {
-            0.0
-        };
-        if pct_enf > best_by_enf_pct {
-            best_by_enf_pct = pct_enf;
-            best_by_enf = i;
+    // Determinar mejor estrategia
+    let mut best_idx = 0;
+    let mut best_vict = 0;
+    for (i, &v) in summary.wins_per_game.iter().enumerate() {
+        if v > best_vict {
+            best_vict = v;
+            best_idx = i;
         }
     }
 
-    let label_partida = &summary.strat_labels[best_by_partida];
-    let label_enf = &summary.strat_labels[best_by_enf];
     lines.push(String::new());
     lines.push(format!(
-        "Mejor por partidas: {} ({:.2}%)",
-        label_partida, best_by_partida_pct
+        "Estrategia con más victorias: {} ({:.2}%)",
+        summary.strat_labels[best_idx],
+        (best_vict as f64) / (summary.reps as f64) * 100.0
     ));
-    lines.push(format!(
-        "Mejor por enfrentamientos: {} ({:.2}%)",
-        label_enf, best_by_enf_pct
-    ));
-    if best_by_partida == best_by_enf {
-        lines.push(format!(
-            "Conclusión: estrategia consistente — '{}' domina ambas métricas.",
-            label_partida
-        ));
-    } else {
-        lines.push(format!("Conclusión:"));
-        lines.push(format!(
-            " - Si te interesa ganar partidas completas (mayoría en cada partida) prioriza '{}' ({:.2}%).",
-            label_partida, best_by_partida_pct
-        ));
-        lines.push(format!(
-            " - Si prefieres maximizar victorias por enfrentamiento (cada mano contra la banca) prioriza '{}' ({:.2}%).",
-            label_enf, best_by_enf_pct
-        ));
-    }
 
     lines
 }

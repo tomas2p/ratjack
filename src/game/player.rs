@@ -3,7 +3,7 @@ use crate::game::deck::Carta;
 pub struct Jugador {
     pub mano: Vec<Carta>,
     pub nombre: String,
-    pub puntos: u8,
+    puntos: u8,
     pub partidas_ganadas: u32,
 }
 
@@ -17,13 +17,23 @@ impl Jugador {
         }
     }
 
+    pub fn puntos(&self) -> u8 {
+        self.puntos
+    }
+
     pub fn tomar_carta(&mut self, baraja: &mut Vec<Carta>) {
         if let Some(carta) = baraja.pop() {
             self.mano.push(carta);
+            self.puntos = self.calcular_puntos();
         }
     }
 
-    pub fn puntaje(&self) -> u8 {
+    pub fn reiniciar(&mut self) {
+        self.mano.clear();
+        self.puntos = 0;
+    }
+
+    fn calcular_puntos(&self) -> u8 {
         let mut total = 0;
         let mut ases = 0;
 
@@ -48,6 +58,13 @@ impl Jugador {
 }
 
 #[cfg(test)]
+impl Jugador {
+    pub fn set_puntos(&mut self, puntos: u8) {
+        self.puntos = puntos;
+    }
+}
+
+#[cfg(test)]
 mod tests {
     use super::*;
     use crate::game::deck::{Carta, Palo};
@@ -56,7 +73,7 @@ mod tests {
     fn test_jugador_nuevo() {
         let jugador = Jugador::nuevo();
         assert_eq!(jugador.nombre, "Jugador");
-        assert_eq!(jugador.puntos, 0);
+        assert_eq!(jugador.puntos(), 0);
         assert_eq!(jugador.partidas_ganadas, 0);
         assert!(jugador.mano.is_empty());
     }
@@ -79,10 +96,27 @@ mod tests {
         assert_eq!(jugador.mano.len(), 1);
         assert_eq!(baraja.len(), 1);
         assert_eq!(jugador.mano[0].valor, 5);
+        assert_eq!(jugador.puntos(), 5);
 
         jugador.tomar_carta(&mut baraja);
         assert_eq!(jugador.mano.len(), 2);
         assert!(baraja.is_empty());
+        assert_eq!(jugador.puntos(), 15);
+    }
+
+    #[test]
+    fn test_reiniciar() {
+        let mut jugador = Jugador::nuevo();
+        jugador.mano = vec![Carta {
+            palo: Palo::Corazones,
+            valor: 10,
+        }];
+        // Forzamos el valor ya que puntos es privado y se actualiza al tomar carta
+        jugador.puntos = 10;
+
+        jugador.reiniciar();
+        assert!(jugador.mano.is_empty());
+        assert_eq!(jugador.puntos(), 0);
     }
 
     #[test]
@@ -98,8 +132,10 @@ mod tests {
                 valor: 5,
             },
         ];
+        // Calculamos puntos manualmente para el test
+        jugador.puntos = jugador.calcular_puntos();
 
-        assert_eq!(jugador.puntaje(), 15);
+        assert_eq!(jugador.puntos(), 15);
     }
 
     #[test]
@@ -109,14 +145,15 @@ mod tests {
             Carta {
                 palo: Palo::Corazones,
                 valor: 1,
-            }, // As
+            },
             Carta {
                 palo: Palo::Diamantes,
                 valor: 10,
-            }, // 10
+            },
         ];
+        jugador.puntos = jugador.calcular_puntos();
 
-        assert_eq!(jugador.puntaje(), 21);
+        assert_eq!(jugador.puntos(), 21);
     }
 
     #[test]
@@ -126,18 +163,19 @@ mod tests {
             Carta {
                 palo: Palo::Corazones,
                 valor: 1,
-            }, // As
+            },
             Carta {
                 palo: Palo::Diamantes,
                 valor: 1,
-            }, // As
+            },
             Carta {
                 palo: Palo::Tréboles,
                 valor: 1,
-            }, // As
+            },
         ];
+        jugador.puntos = jugador.calcular_puntos();
 
-        assert_eq!(jugador.puntaje(), 13); // 11 + 1 + 1
+        assert_eq!(jugador.puntos(), 13);
     }
 
     #[test]
@@ -147,14 +185,15 @@ mod tests {
             Carta {
                 palo: Palo::Corazones,
                 valor: 1,
-            }, // As
+            },
             Carta {
                 palo: Palo::Diamantes,
                 valor: 13,
-            }, // Rey (10 puntos)
+            },
         ];
+        jugador.puntos = jugador.calcular_puntos();
 
-        assert_eq!(jugador.puntaje(), 21);
+        assert_eq!(jugador.puntos(), 21);
     }
 
     #[test]
@@ -176,18 +215,19 @@ mod tests {
             Carta {
                 palo: Palo::Corazones,
                 valor: 1,
-            }, // As
+            },
             Carta {
                 palo: Palo::Diamantes,
                 valor: 5,
-            }, // 5
+            },
             Carta {
                 palo: Palo::Tréboles,
                 valor: 10,
-            }, // 10
+            },
         ];
+        jugador.puntos = jugador.calcular_puntos();
 
-        assert_eq!(jugador.puntaje(), 16); // As vale 1
+        assert_eq!(jugador.puntos(), 16);
     }
 
     #[test]
@@ -197,14 +237,15 @@ mod tests {
             Carta {
                 palo: Palo::Corazones,
                 valor: 11,
-            }, // J
+            },
             Carta {
                 palo: Palo::Diamantes,
                 valor: 12,
-            }, // Q
+            },
         ];
+        jugador.puntos = jugador.calcular_puntos();
 
-        assert_eq!(jugador.puntaje(), 20);
+        assert_eq!(jugador.puntos(), 20);
     }
 
     #[test]
@@ -224,7 +265,8 @@ mod tests {
                 valor: 5,
             },
         ];
+        jugador.puntos = jugador.calcular_puntos();
 
-        assert_eq!(jugador.puntaje(), 25);
+        assert_eq!(jugador.puntos(), 25);
     }
 }

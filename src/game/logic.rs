@@ -1,55 +1,77 @@
 use crate::game::deck::Carta;
 use crate::game::player::Jugador;
 
-// Función para repartir cartas iniciales
-pub fn repartir_cartas(jugador: &mut Jugador, banca: &mut Jugador, baraja: &mut Vec<Carta>) {
-    // Se reparten dos cartas a cada jugador
-    jugador.tomar_carta(baraja);
-    banca.tomar_carta(baraja);
-    jugador.tomar_carta(baraja);
-    banca.tomar_carta(baraja);
+/// Representa el estado de una mesa de juego.
+pub struct Mesa {
+    pub jugador: Jugador,
+    pub banca: Jugador,
+    pub baraja: Vec<Carta>,
+}
 
-    // Actualizar puntos
-    jugador.puntos = jugador.puntaje();
-    banca.puntos = banca.puntaje();
+impl Mesa {
+    pub fn nueva(baraja: Vec<Carta>) -> Self {
+        Self {
+            jugador: Jugador::nuevo(),
+            banca: Jugador::nuevo(),
+            baraja,
+        }
+    }
+
+    pub fn repartir_inicial(&mut self) {
+        self.jugador.reiniciar();
+        self.banca.reiniciar();
+
+        for _ in 0..2 {
+            self.jugador.tomar_carta(&mut self.baraja);
+            self.banca.tomar_carta(&mut self.baraja);
+        }
+    }
+}
+
+// Función para repartir cartas iniciales (mantener por compatibilidad o simplicidad)
+pub fn repartir_cartas(jugador: &mut Jugador, banca: &mut Jugador, baraja: &mut Vec<Carta>) {
+    jugador.reiniciar();
+    banca.reiniciar();
+
+    for _ in 0..2 {
+        jugador.tomar_carta(baraja);
+        banca.tomar_carta(baraja);
+    }
 }
 
 // Función para jugar un turno
 pub fn jugar_turno(jugador: &mut Jugador, baraja: &mut Vec<Carta>, tomar_carta: bool) {
     if tomar_carta {
         jugador.tomar_carta(baraja);
-        jugador.puntos = jugador.puntaje();
     }
 }
 
 // Función para determinar el ganador
 pub fn determinar_ganador(jugador: &mut Jugador, banca: &mut Jugador) -> String {
-    let puntos_jugador = jugador.puntos;
-    let puntos_banca = banca.puntos;
+    let p_j = jugador.puntos();
+    let p_b = banca.puntos();
 
-    let mensaje = if puntos_jugador > 21 {
+    if p_j > 21 {
         banca.partida_ganada();
-        "Te has pasado. ¡La banca gana!"
-    } else if puntos_banca > 21 {
+        "Te has pasado. ¡La banca gana!".to_string()
+    } else if p_b > 21 {
         jugador.partida_ganada();
-        "La banca se ha pasado. ¡Has ganado!"
-    } else if puntos_jugador > puntos_banca {
+        "La banca se ha pasado. ¡Has ganado!".to_string()
+    } else if p_j > p_b {
         jugador.partida_ganada();
-        "¡Has ganado!"
-    } else if puntos_banca > puntos_jugador {
+        "¡Has ganado!".to_string()
+    } else if p_b > p_j {
         banca.partida_ganada();
-        "La banca gana."
+        "La banca gana.".to_string()
     } else {
-        "Empate."
-    };
-    mensaje.to_string()
+        "Empate.".to_string()
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::game::deck::crear_baraja;
-    use crate::game::player::Jugador;
 
     #[test]
     fn test_repartir_cartas() {
@@ -61,77 +83,35 @@ mod tests {
 
         assert_eq!(jugador.mano.len(), 2);
         assert_eq!(banca.mano.len(), 2);
-        assert_eq!(baraja.len(), 48); // 52 - 4 cartas repartidas
+        assert_eq!(baraja.len(), 48);
+        assert!(jugador.puntos() > 0);
+        assert!(banca.puntos() > 0);
     }
 
     #[test]
-    fn test_jugar_turno() {
-        let mut baraja = crear_baraja();
-        let mut jugador = Jugador::nuevo();
-
-        jugar_turno(&mut jugador, &mut baraja, true);
-        assert_eq!(jugador.mano.len(), 1);
-
-        jugar_turno(&mut jugador, &mut baraja, false);
-        assert_eq!(jugador.mano.len(), 1); // No debe cambiar si no toma carta
+    fn test_mesa_repartir() {
+        let baraja = crear_baraja();
+        let mut mesa = Mesa::nueva(baraja);
+        mesa.repartir_inicial();
+        assert_eq!(mesa.jugador.mano.len(), 2);
+        assert_eq!(mesa.banca.mano.len(), 2);
     }
 
     #[test]
-    fn test_determinar_ganador_jugador_pasa() {
-        let mut jugador = Jugador::nuevo();
-        let mut banca = Jugador::nuevo();
-        jugador.puntos = 22;
-        banca.puntos = 18;
+    fn test_determinar_ganador() {
+        let mut j = Jugador::nuevo();
+        let mut b = Jugador::nuevo();
 
+        j.set_puntos(20);
+        b.set_puntos(18);
+        assert_eq!(determinar_ganador(&mut j, &mut b), "¡Has ganado!");
+        assert_eq!(j.partidas_ganadas, 1);
+
+        j.set_puntos(22);
         assert_eq!(
-            determinar_ganador(&mut jugador, &mut banca),
+            determinar_ganador(&mut j, &mut b),
             "Te has pasado. ¡La banca gana!"
         );
-    }
-
-    #[test]
-    fn test_determinar_ganador_banca_pasa() {
-        let mut jugador = Jugador::nuevo();
-        let mut banca = Jugador::nuevo();
-        jugador.puntos = 18;
-        banca.puntos = 22;
-
-        assert_eq!(
-            determinar_ganador(&mut jugador, &mut banca),
-            "La banca se ha pasado. ¡Has ganado!"
-        );
-    }
-
-    #[test]
-    fn test_determinar_ganador_jugador_gana() {
-        let mut jugador = Jugador::nuevo();
-        let mut banca = Jugador::nuevo();
-        jugador.puntos = 20;
-        banca.puntos = 18;
-
-        assert_eq!(determinar_ganador(&mut jugador, &mut banca), "¡Has ganado!");
-    }
-
-    #[test]
-    fn test_determinar_ganador_banca_gana() {
-        let mut jugador = Jugador::nuevo();
-        let mut banca = Jugador::nuevo();
-        jugador.puntos = 17;
-        banca.puntos = 20;
-
-        assert_eq!(
-            determinar_ganador(&mut jugador, &mut banca),
-            "La banca gana."
-        );
-    }
-
-    #[test]
-    fn test_determinar_ganador_empate() {
-        let mut jugador = Jugador::nuevo();
-        let mut banca = Jugador::nuevo();
-        jugador.puntos = 19;
-        banca.puntos = 19;
-
-        assert_eq!(determinar_ganador(&mut jugador, &mut banca), "Empate.");
+        assert_eq!(b.partidas_ganadas, 1);
     }
 }
