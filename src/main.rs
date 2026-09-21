@@ -78,11 +78,11 @@ fn main() -> io::Result<()> {
     repartir_cartas(&mut jugador, &mut banca, &mut baraja);
     // Antes de ejecutar la UI, usar la configuración parseada por cli
     let ui_strategies = parse_strategies(&cfg.ui_str_raw);
-    let label_j = ui_strategies
+    let label_b = ui_strategies
         .get(0)
         .map(|s| strategies::strategy_label(s))
         .unwrap_or_default();
-    let label_b = ui_strategies
+    let label_j = ui_strategies
         .get(1)
         .map(|s| strategies::strategy_label(s))
         .unwrap_or_default();

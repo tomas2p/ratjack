@@ -1,41 +1,35 @@
 ![](ratjack-logo.PNG)
 # 🃏 RatJack - Blackjack en Rust con Ratatui
-**RatJack** es un juego de **Blackjack** escrito en **Rust**, con una interfaz de usuario basada en **Ratatui**. Juega directamente desde la terminal con una experiencia minimalista pero interactiva.  
 
-## 🎲 Características  
-✅ Interfaz en la terminal con **Ratatui**  
-✅ Reglas clásicas del Blackjack (21, doble, split)  
-✅ Contador de partidas ganadas
-✅ Diseño vertical
-✅ Animaciones simples con ASCII  
-✅ Código modular y fácil de entender  
+**RatJack** es un juego de **Blackjack** interactivo y simulador escrito en **Rust**, con una interfaz de usuario basada en **Ratatui** para la terminal.
 
-## 🚀 Instalación  
-Asegúrate de tener **Rust** y **Cargo** instalados. Luego, ejecuta:  
-```bash
-cargo install ratjack
-```
+## 🎲 Características y Mejoras Recientes
 
-## 🎮 Cómo jugar
-Ejecuta el juego con:
-```bash
-ratjack
-```
-Usa las teclas:
+✅ **Interfaz Visual de Cartas Mejorada:** Las cartas se renderizan lado a lado en filas ordenadas con colores según su palo (rojo para corazones y diamantes, cyan/blanco para picas y tréboles), evitando recortes verticales sin importar cuántas cartas se acumulen en la mano.  
+✅ **Conteo de Cartas de la Banca:** Durante tu turno, se muestra cuántas cartas tiene la banca en total (ej. `? (2 cartas)`) junto con marcadores visuales para las cartas ocultas, respetando las reglas del Blackjack.  
+✅ **Victoria Automática al 21:** Al alcanzar 21 puntos (al repartir o pedir), el turno de la banca se resuelve automáticamente sin requerir pulsar ninguna tecla.  
+✅ **Continuación Inmediata al Plantarse:** Al elegir plantarse (`s` o `2`), la partida continúa y se resuelve de forma instantánea.  
+✅ **Estrategias Personalizables:** Configura algoritmos separados para la banca y el jugador en la UI.
 
-  <kbd>↵ (Enter)</kbd> / <kbd>1</kbd> / <kbd>p</kbd> → Pedir carta (Hit)
+## 🚀 Instalación y Ejecución
 
-  <kbd>2</kbd> / <kbd>s</kbd> → Quedarse (Stand)
+Asegúrate de tener **Rust** y **Cargo** instalados. Clona el repositorio y ejecútalo con:
 
-  <kbd>q</kbd> → Salir
-
-## 🛠️ Compilar desde el código fuente
-Si prefieres compilarlo manualmente:
 ```bash
 git clone https://github.com/tomas2p/ratjack.git
 cd ratjack
-cargo run
+cargo run -- --ui --ui-strategies "threshold:17,threshold:16"
 ```
 
+## 🎮 Cómo jugar
+
+Usa las teclas en el modo interactivo:
+
+- <kbd>↵ (Enter)</kbd> / <kbd>1</kbd> / <kbd>p</kbd> → Pedir carta (Hit)
+- <kbd>2</kbd> / <kbd>s</kbd> → Plantarse (Stand)
+- <kbd>n</kbd> → Nueva partida
+- <kbd>q</kbd> → Salir
+
 ## 📜 Licencia
+
 Este proyecto está bajo la licencia [MIT](LICENSE). ¡Siéntete libre de contribuir!

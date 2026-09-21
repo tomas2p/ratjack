@@ -578,19 +578,60 @@ fn reiniciar_partida(jugador: &mut Jugador, banca: &mut Jugador, baraja: &mut Ve
 }
 
 fn render_ui(frame: &mut ratatui::Frame, jugador: &Jugador, banca: &Jugador, app: &AppState) {
-    struct CardLines {
-        lines: [String; 5],
+    struct CardLines<'a> {
+        lines: [ratatui::text::Line<'a>; 5],
     }
 
-    impl CardLines {
+    impl<'a> CardLines<'a> {
         fn face_up(carta: &Carta) -> Self {
+            let is_red = matches!(
+                carta.palo,
+                crate::game::deck::Palo::Corazones | crate::game::deck::Palo::Diamantes
+            );
+            let suit_color = if is_red {
+                Color::LightRed
+            } else {
+                Color::White
+            };
+            let border_color = if is_red { Color::Red } else { Color::Cyan };
+
+            let val_str = carta.valor_str();
+            let sym = carta.simbolo();
+
             Self {
                 lines: [
-                    String::from("╭─────╮"),
-                    format!("│{:^5}│", carta.valor_str()),
-                    format!("│{:^5}│", carta.simbolo()),
-                    format!("│{:^5}│", carta.valor_str()),
-                    String::from("╰─────╯"),
+                    ratatui::text::Line::from(Span::styled(
+                        "╭─────╮",
+                        Style::default().fg(border_color),
+                    )),
+                    ratatui::text::Line::from(vec![
+                        Span::styled("│", Style::default().fg(border_color)),
+                        Span::styled(
+                            format!("{:^5}", val_str),
+                            Style::default().fg(suit_color).add_modifier(Modifier::BOLD),
+                        ),
+                        Span::styled("│", Style::default().fg(border_color)),
+                    ]),
+                    ratatui::text::Line::from(vec![
+                        Span::styled("│", Style::default().fg(border_color)),
+                        Span::styled(
+                            format!("{:^5}", sym),
+                            Style::default().fg(suit_color).add_modifier(Modifier::BOLD),
+                        ),
+                        Span::styled("│", Style::default().fg(border_color)),
+                    ]),
+                    ratatui::text::Line::from(vec![
+                        Span::styled("│", Style::default().fg(border_color)),
+                        Span::styled(
+                            format!("{:^5}", val_str),
+                            Style::default().fg(suit_color).add_modifier(Modifier::BOLD),
+                        ),
+                        Span::styled("│", Style::default().fg(border_color)),
+                    ]),
+                    ratatui::text::Line::from(Span::styled(
+                        "╰─────╯",
+                        Style::default().fg(border_color),
+                    )),
                 ],
             }
         }
@@ -598,11 +639,32 @@ fn render_ui(frame: &mut ratatui::Frame, jugador: &Jugador, banca: &Jugador, app
         fn face_down() -> Self {
             Self {
                 lines: [
-                    String::from("╭─────╮"),
-                    String::from("│  ?  │"),
-                    String::from("│  ?  │"),
-                    String::from("│  ?  │"),
-                    String::from("╰─────╯"),
+                    ratatui::text::Line::from(Span::styled(
+                        "╭─────╮",
+                        Style::default().fg(Color::DarkGray),
+                    )),
+                    ratatui::text::Line::from(Span::styled(
+                        "│  ?  │",
+                        Style::default()
+                            .fg(Color::Yellow)
+                            .add_modifier(Modifier::BOLD),
+                    )),
+                    ratatui::text::Line::from(Span::styled(
+                        "│  ?  │",
+                        Style::default()
+                            .fg(Color::Yellow)
+                            .add_modifier(Modifier::BOLD),
+                    )),
+                    ratatui::text::Line::from(Span::styled(
+                        "│  ?  │",
+                        Style::default()
+                            .fg(Color::Yellow)
+                            .add_modifier(Modifier::BOLD),
+                    )),
+                    ratatui::text::Line::from(Span::styled(
+                        "╰─────╯",
+                        Style::default().fg(Color::DarkGray),
+                    )),
                 ],
             }
         }
@@ -618,11 +680,10 @@ fn render_ui(frame: &mut ratatui::Frame, jugador: &Jugador, banca: &Jugador, app
         color: Color,
         algoritmo: &str,
     ) {
-        // Create a string representation of cards
-        let mut mano = String::new();
+        let mut text_lines: Vec<ratatui::text::Line> = Vec::new();
 
         if jugador.mano.is_empty() {
-            mano = "[Sin cartas]".to_string();
+            text_lines.push(ratatui::text::Line::from("[Sin cartas]"));
         } else {
             let mut card_list = Vec::new();
             if nombre == "Banca" && !mostrar_todas_cartas {
@@ -640,26 +701,19 @@ fn render_ui(frame: &mut ratatui::Frame, jugador: &Jugador, banca: &Jugador, app
 
             // Render cards horizontally in chunks of 4 per row to avoid vertical clipping
             for chunk in card_list.chunks(4) {
-                let mut row_lines = [
-                    String::new(),
-                    String::new(),
-                    String::new(),
-                    String::new(),
-                    String::new(),
-                ];
+                let mut row_spans: [Vec<Span>; 5] = [vec![], vec![], vec![], vec![], vec![]];
                 for (i, card) in chunk.iter().enumerate() {
                     for l in 0..5 {
                         if i > 0 {
-                            row_lines[l].push(' ');
+                            row_spans[l].push(Span::raw(" "));
                         }
-                        row_lines[l].push_str(&card.lines[l]);
+                        row_spans[l].extend(card.lines[l].spans.clone());
                     }
                 }
                 for l in 0..5 {
-                    mano.push_str(&row_lines[l]);
-                    mano.push('\n');
+                    text_lines.push(ratatui::text::Line::from(row_spans[l].clone()));
                 }
-                mano.push('\n');
+                text_lines.push(ratatui::text::Line::from(""));
             }
         }
 
@@ -689,7 +743,7 @@ fn render_ui(frame: &mut ratatui::Frame, jugador: &Jugador, banca: &Jugador, app
                 .into_centered_line(),
             );
 
-        let widget = Paragraph::new(mano)
+        let widget = Paragraph::new(text_lines)
             .style(Style::default().fg(Color::White))
             .block(block)
             .centered();
