@@ -598,6 +598,10 @@ fn render_ui(frame: &mut ratatui::Frame, jugador: &Jugador, banca: &Jugador, app
             let val_str = carta.valor_str();
             let sym = carta.simbolo();
 
+            let val_len = val_str.chars().count();
+            let top_spaces = " ".repeat(5_usize.saturating_sub(val_len).saturating_sub(1));
+            let bot_spaces = " ".repeat(5_usize.saturating_sub(1).saturating_sub(val_len));
+
             Self {
                 lines: [
                     ratatui::text::Line::from(Span::styled(
@@ -607,23 +611,23 @@ fn render_ui(frame: &mut ratatui::Frame, jugador: &Jugador, banca: &Jugador, app
                     ratatui::text::Line::from(vec![
                         Span::styled("│", Style::default().fg(border_color)),
                         Span::styled(
-                            format!("{:^5}", val_str),
+                            format!("{}{}{}", val_str, top_spaces, sym),
                             Style::default().fg(suit_color).add_modifier(Modifier::BOLD),
                         ),
                         Span::styled("│", Style::default().fg(border_color)),
                     ]),
                     ratatui::text::Line::from(vec![
-                        Span::styled("│", Style::default().fg(border_color)),
+                        Span::styled("│  ", Style::default().fg(border_color)),
                         Span::styled(
-                            format!("{:^5}", sym),
+                            format!("{}", sym),
                             Style::default().fg(suit_color).add_modifier(Modifier::BOLD),
                         ),
-                        Span::styled("│", Style::default().fg(border_color)),
+                        Span::styled("  │", Style::default().fg(border_color)),
                     ]),
                     ratatui::text::Line::from(vec![
                         Span::styled("│", Style::default().fg(border_color)),
                         Span::styled(
-                            format!("{:^5}", val_str),
+                            format!("{}{}{}", sym, bot_spaces, val_str),
                             Style::default().fg(suit_color).add_modifier(Modifier::BOLD),
                         ),
                         Span::styled("│", Style::default().fg(border_color)),
@@ -699,9 +703,20 @@ fn render_ui(frame: &mut ratatui::Frame, jugador: &Jugador, banca: &Jugador, app
                 }
             }
 
-            // Render cards horizontally in chunks of 4 per row to avoid vertical clipping
+            let inner_width = area.width.saturating_sub(2) as usize;
+
+            // Render cards horizontally in chunks of 4 per row, precisely centered
             for chunk in card_list.chunks(4) {
+                let k = chunk.len();
+                let row_width = k * 7 + k.saturating_sub(1);
+                let padding = inner_width.saturating_sub(row_width) / 2;
+                let pad_span = Span::raw(" ".repeat(padding));
+
                 let mut row_spans: [Vec<Span>; 5] = [vec![], vec![], vec![], vec![], vec![]];
+                for l in 0..5 {
+                    row_spans[l].push(pad_span.clone());
+                }
+
                 for (i, card) in chunk.iter().enumerate() {
                     for l in 0..5 {
                         if i > 0 {
@@ -745,8 +760,7 @@ fn render_ui(frame: &mut ratatui::Frame, jugador: &Jugador, banca: &Jugador, app
 
         let widget = Paragraph::new(text_lines)
             .style(Style::default().fg(Color::White))
-            .block(block)
-            .centered();
+            .block(block);
         frame.render_widget(widget, area);
     }
 
