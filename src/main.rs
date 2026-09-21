@@ -81,7 +81,7 @@ fn main() -> io::Result<()> {
     let label_b = ui_strategies
         .get(0)
         .map(|s| strategies::strategy_label(s))
-        .unwrap_or_default();
+        .unwrap_or_else(|| String::from("Threshold(17)"));
     let label_j = ui_strategies
         .get(1)
         .map(|s| strategies::strategy_label(s))
