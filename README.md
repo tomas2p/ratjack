@@ -1,7 +1,5 @@
 <h1> <img src="https://cdn.simpleicons.org/ratatui/FFDC00" height="25"> RatJack - Blackjack en Rust con Ratatui </h1>
 
----
-
 **RatJack** es un juego de **Blackjack** interactivo y simulador escrito en **Rust**, que utiliza **Ratatui** para crear una experiencia envolvente en la terminal.
 
 ---
