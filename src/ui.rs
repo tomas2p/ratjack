@@ -577,215 +577,216 @@ fn reiniciar_partida(jugador: &mut Jugador, banca: &mut Jugador, baraja: &mut Ve
     repartir_cartas(jugador, banca, baraja);
 }
 
-fn render_ui(frame: &mut ratatui::Frame, jugador: &Jugador, banca: &Jugador, app: &AppState) {
-    struct CardLines<'a> {
-        lines: [ratatui::text::Line<'a>; 5],
-    }
+struct CardLines<'a> {
+    lines: [ratatui::text::Line<'a>; 5],
+}
 
-    impl<'a> CardLines<'a> {
-        fn face_up(carta: &Carta) -> Self {
-            let is_red = matches!(
-                carta.palo,
-                crate::game::deck::Palo::Corazones | crate::game::deck::Palo::Diamantes
-            );
-            let suit_color = if is_red {
-                Color::LightRed
-            } else {
-                Color::White
-            };
-            let border_color = if is_red { Color::Red } else { Color::Cyan };
-
-            let val_str = carta.valor_str();
-            let sym = carta.simbolo();
-
-            let val_len = val_str.chars().count();
-            let top_spaces = " ".repeat(5_usize.saturating_sub(val_len).saturating_sub(1));
-            let bot_spaces = " ".repeat(5_usize.saturating_sub(1).saturating_sub(val_len));
-
-            Self {
-                lines: [
-                    ratatui::text::Line::from(Span::styled(
-                        "╭─────╮",
-                        Style::default().fg(border_color),
-                    )),
-                    ratatui::text::Line::from(vec![
-                        Span::styled("│", Style::default().fg(border_color)),
-                        Span::styled(
-                            format!("{}{}{}", val_str, top_spaces, sym),
-                            Style::default().fg(suit_color).add_modifier(Modifier::BOLD),
-                        ),
-                        Span::styled("│", Style::default().fg(border_color)),
-                    ]),
-                    ratatui::text::Line::from(vec![
-                        Span::styled("│  ", Style::default().fg(border_color)),
-                        Span::styled(
-                            format!("{}", sym),
-                            Style::default().fg(suit_color).add_modifier(Modifier::BOLD),
-                        ),
-                        Span::styled("  │", Style::default().fg(border_color)),
-                    ]),
-                    ratatui::text::Line::from(vec![
-                        Span::styled("│", Style::default().fg(border_color)),
-                        Span::styled(
-                            format!("{}{}{}", sym, bot_spaces, val_str),
-                            Style::default().fg(suit_color).add_modifier(Modifier::BOLD),
-                        ),
-                        Span::styled("│", Style::default().fg(border_color)),
-                    ]),
-                    ratatui::text::Line::from(Span::styled(
-                        "╰─────╯",
-                        Style::default().fg(border_color),
-                    )),
-                ],
-            }
-        }
-
-        fn face_down() -> Self {
-            Self {
-                lines: [
-                    ratatui::text::Line::from(Span::styled(
-                        "╭─────╮",
-                        Style::default().fg(Color::DarkGray),
-                    )),
-                    ratatui::text::Line::from(Span::styled(
-                        "│  ?  │",
-                        Style::default()
-                            .fg(Color::Yellow)
-                            .add_modifier(Modifier::BOLD),
-                    )),
-                    ratatui::text::Line::from(Span::styled(
-                        "│  ?  │",
-                        Style::default()
-                            .fg(Color::Yellow)
-                            .add_modifier(Modifier::BOLD),
-                    )),
-                    ratatui::text::Line::from(Span::styled(
-                        "│  ?  │",
-                        Style::default()
-                            .fg(Color::Yellow)
-                            .add_modifier(Modifier::BOLD),
-                    )),
-                    ratatui::text::Line::from(Span::styled(
-                        "╰─────╯",
-                        Style::default().fg(Color::DarkGray),
-                    )),
-                ],
-            }
-        }
-    }
-
-    // Function to render a player
-    fn render_player(
-        frame: &mut ratatui::Frame,
-        area: ratatui::layout::Rect,
-        nombre: &str,
-        jugador: &Jugador,
-        mostrar_todas_cartas: bool,
-        color: Color,
-        algoritmo: &str,
-    ) {
-        let mut text_lines: Vec<ratatui::text::Line> = Vec::new();
-
-        if jugador.mano.is_empty() {
-            text_lines.push(ratatui::text::Line::from("[Sin cartas]"));
+impl<'a> CardLines<'a> {
+    fn face_up(carta: &Carta) -> Self {
+        let is_red = matches!(
+            carta.palo,
+            crate::game::deck::Palo::Corazones | crate::game::deck::Palo::Diamantes
+        );
+        let suit_color = if is_red {
+            Color::LightRed
         } else {
-            let mut card_list = Vec::new();
-            if nombre == "Banca" && !mostrar_todas_cartas {
-                if !jugador.mano.is_empty() {
-                    card_list.push(CardLines::face_up(&jugador.mano[0]));
-                }
-                for _ in 1..jugador.mano.len() {
-                    card_list.push(CardLines::face_down());
-                }
-            } else {
-                for carta in &jugador.mano {
-                    card_list.push(CardLines::face_up(carta));
-                }
-            }
-
-            let inner_width = area.width.saturating_sub(2) as usize;
-            let total_chunks = (card_list.len() + 3) / 4;
-
-            // Render cards horizontally in chunks of 4 per row, precisely centered
-            for (chunk_idx, chunk) in card_list.chunks(4).enumerate() {
-                let k = chunk.len();
-                let row_width = k * 7 + k.saturating_sub(1);
-                let padding = inner_width.saturating_sub(row_width) / 2;
-                let pad_span = Span::raw(" ".repeat(padding));
-
-                let mut row_spans: [Vec<Span>; 5] = [vec![], vec![], vec![], vec![], vec![]];
-                for l in 0..5 {
-                    row_spans[l].push(pad_span.clone());
-                }
-
-                for (i, card) in chunk.iter().enumerate() {
-                    for l in 0..5 {
-                        if i > 0 {
-                            row_spans[l].push(Span::raw(" "));
-                        }
-                        row_spans[l].extend(card.lines[l].spans.clone());
-                    }
-                }
-                for l in 0..5 {
-                    text_lines.push(ratatui::text::Line::from(row_spans[l].clone()));
-                }
-                if chunk_idx + 1 < total_chunks {
-                    text_lines.push(ratatui::text::Line::from(""));
-                }
-            }
-        }
-
-        // Vertical centering
-        let inner_height = area.height.saturating_sub(2) as usize;
-        let content_height = text_lines.len();
-        let v_padding = inner_height.saturating_sub(content_height) / 2;
-
-        let mut final_lines = Vec::with_capacity(v_padding + content_height);
-        for _ in 0..v_padding {
-            final_lines.push(ratatui::text::Line::from(""));
-        }
-        final_lines.extend(text_lines);
-
-        let puntos = if mostrar_todas_cartas {
-            jugador.puntos.to_string()
-        } else {
-            format!("? ({} cartas)", jugador.mano.len())
+            Color::White
         };
+        let border_color = if is_red { Color::Red } else { Color::Cyan };
 
-        let block = Block::default()
-            .borders(Borders::ALL)
-            .title_top(Span::styled(nombre, Style::default().fg(Color::White)))
-            .border_type(BorderType::Rounded)
-            .border_style(Style::default().fg(color))
-            .title_top(
-                Span::styled(
-                    format!("PTS: {}", puntos),
-                    Style::default().fg(Color::White),
-                )
-                .into_right_aligned_line(),
-            )
-            .title_bottom(
-                Span::styled(
-                    format!(
-                        "Ganadas: {}{}",
-                        jugador.partidas_ganadas,
-                        if !algoritmo.is_empty() {
-                            format!(" | Alg: {}", algoritmo)
-                        } else {
-                            "".to_string()
-                        }
+        let val_str = carta.valor_str();
+        let sym = carta.simbolo();
+
+        let val_len = val_str.chars().count();
+        let top_spaces = " ".repeat(5_usize.saturating_sub(val_len).saturating_sub(1));
+        let bot_spaces = " ".repeat(5_usize.saturating_sub(1).saturating_sub(val_len));
+
+        Self {
+            lines: [
+                ratatui::text::Line::from(Span::styled(
+                    "╭─────╮",
+                    Style::default().fg(border_color),
+                )),
+                ratatui::text::Line::from(vec![
+                    Span::styled("│", Style::default().fg(border_color)),
+                    Span::styled(
+                        format!("{}{}{}", val_str, top_spaces, sym),
+                        Style::default().fg(suit_color).add_modifier(Modifier::BOLD),
                     ),
-                    Style::default().fg(Color::White),
-                )
-                .into_centered_line(),
-            );
-
-        let widget = Paragraph::new(final_lines)
-            .style(Style::default().fg(Color::White))
-            .block(block);
-        frame.render_widget(widget, area);
+                    Span::styled("│", Style::default().fg(border_color)),
+                ]),
+                ratatui::text::Line::from(vec![
+                    Span::styled("│  ", Style::default().fg(border_color)),
+                    Span::styled(
+                        format!("{}", sym),
+                        Style::default().fg(suit_color).add_modifier(Modifier::BOLD),
+                    ),
+                    Span::styled("  │", Style::default().fg(border_color)),
+                ]),
+                ratatui::text::Line::from(vec![
+                    Span::styled("│", Style::default().fg(border_color)),
+                    Span::styled(
+                        format!("{}{}{}", sym, bot_spaces, val_str),
+                        Style::default().fg(suit_color).add_modifier(Modifier::BOLD),
+                    ),
+                    Span::styled("│", Style::default().fg(border_color)),
+                ]),
+                ratatui::text::Line::from(Span::styled(
+                    "╰─────╯",
+                    Style::default().fg(border_color),
+                )),
+            ],
+        }
     }
 
+    fn face_down() -> Self {
+        Self {
+            lines: [
+                ratatui::text::Line::from(Span::styled(
+                    "╭─────╮",
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                )),
+                ratatui::text::Line::from(Span::styled(
+                    "│  ?  │",
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                )),
+                ratatui::text::Line::from(Span::styled(
+                    "│  ?  │",
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                )),
+                ratatui::text::Line::from(Span::styled(
+                    "│  ?  │",
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                )),
+                ratatui::text::Line::from(Span::styled(
+                    "╰─────╯",
+                    Style::default()
+                        .fg(Color::Yellow)
+                        .add_modifier(Modifier::BOLD),
+                )),
+            ],
+        }
+    }
+}
+
+fn render_player(
+    frame: &mut ratatui::Frame,
+    area: ratatui::layout::Rect,
+    nombre: &str,
+    jugador: &Jugador,
+    mostrar_todas_cartas: bool,
+    color: Color,
+    algoritmo: &str,
+) {
+    let mut text_lines: Vec<ratatui::text::Line> = Vec::new();
+
+    if jugador.mano.is_empty() {
+        text_lines.push(ratatui::text::Line::from("[Sin cartas]"));
+    } else {
+        let mut card_list = Vec::new();
+        if nombre == "Banca" && !mostrar_todas_cartas {
+            if !jugador.mano.is_empty() {
+                card_list.push(CardLines::face_up(&jugador.mano[0]));
+            }
+            for _ in 1..jugador.mano.len() {
+                card_list.push(CardLines::face_down());
+            }
+        } else {
+            for carta in &jugador.mano {
+                card_list.push(CardLines::face_up(carta));
+            }
+        }
+
+        let inner_width = area.width.saturating_sub(2) as usize;
+        let total_chunks = (card_list.len() + 3) / 4;
+
+        for (chunk_idx, chunk) in card_list.chunks(4).enumerate() {
+            let k = chunk.len();
+            let row_width = k * 7 + k.saturating_sub(1);
+            let padding = inner_width.saturating_sub(row_width) / 2;
+            let pad_span = Span::raw(" ".repeat(padding));
+
+            let mut row_spans: [Vec<Span>; 5] = [vec![], vec![], vec![], vec![], vec![]];
+            for l in 0..5 {
+                row_spans[l].push(pad_span.clone());
+            }
+
+            for (i, card) in chunk.iter().enumerate() {
+                for l in 0..5 {
+                    if i > 0 {
+                        row_spans[l].push(Span::raw(" "));
+                    }
+                    row_spans[l].extend(card.lines[l].spans.clone());
+                }
+            }
+            for l in 0..5 {
+                text_lines.push(ratatui::text::Line::from(row_spans[l].clone()));
+            }
+            if chunk_idx + 1 < total_chunks {
+                text_lines.push(ratatui::text::Line::from(""));
+            }
+        }
+    }
+
+    let inner_height = area.height.saturating_sub(2) as usize;
+    let content_height = text_lines.len();
+    let v_padding = inner_height.saturating_sub(content_height) / 2;
+
+    let mut final_lines = Vec::with_capacity(v_padding + content_height);
+    for _ in 0..v_padding {
+        final_lines.push(ratatui::text::Line::from(""));
+    }
+    final_lines.extend(text_lines);
+
+    let puntos = if mostrar_todas_cartas {
+        jugador.puntos.to_string()
+    } else {
+        format!("? ({} cartas)", jugador.mano.len())
+    };
+
+    let block = Block::default()
+        .borders(Borders::ALL)
+        .title_top(Span::styled(nombre, Style::default().fg(Color::White)))
+        .border_type(BorderType::Rounded)
+        .border_style(Style::default().fg(color))
+        .title_top(
+            Span::styled(
+                format!("PTS: {}", puntos),
+                Style::default().fg(Color::White),
+            )
+            .into_right_aligned_line(),
+        )
+        .title_bottom(
+            Span::styled(
+                format!(
+                    "Ganadas: {}{}",
+                    jugador.partidas_ganadas,
+                    if !algoritmo.is_empty() {
+                        format!(" | Alg: {}", algoritmo)
+                    } else {
+                        "".to_string()
+                    }
+                ),
+                Style::default().fg(Color::White),
+            )
+            .into_centered_line(),
+        );
+
+    let widget = Paragraph::new(final_lines)
+        .style(Style::default().fg(Color::White))
+        .block(block);
+    frame.render_widget(widget, area);
+}
+
+fn render_ui(frame: &mut ratatui::Frame, jugador: &Jugador, banca: &Jugador, app: &AppState) {
     // Main vertical layout
     let main_chunks = Layout::default()
         .direction(Direction::Vertical)
