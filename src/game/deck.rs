@@ -32,6 +32,20 @@ impl Carta {
         }
     }
 
+    pub fn value_for_context(&self, current_points: u8) -> u8 {
+        if self.valor == 1 {
+            if current_points <= 10 {
+                11
+            } else {
+                1
+            }
+        } else if self.valor >= 11 {
+            10
+        } else {
+            self.valor
+        }
+    }
+
     pub fn valor_str(&self) -> String {
         match self.valor {
             1 => "A".to_string(),

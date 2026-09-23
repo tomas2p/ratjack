@@ -80,7 +80,7 @@ pub fn calc_bust_probability_simulation(
                 break;
             }
             let c = sample[idx];
-            let val = card_value_for_points(c, points as u8) as i32;
+            let val = c.value_for_context(points as u8) as i32;
             points += val;
             idx += 1;
             draws += 1;
@@ -94,22 +94,6 @@ pub fn calc_bust_probability_simulation(
     }
 
     busts as f64 / sims as f64
-}
-
-// Valor real de la carta considerando As flexibilidad (11 o 1) con respecto a puntos actuales
-fn card_value_for_points(c: Carta, current_points: u8) -> u8 {
-    if c.valor == 1 {
-        // As: usar 11 si no provocaría bust, sino 1
-        if current_points <= 10 {
-            11
-        } else {
-            1
-        }
-    } else if c.valor >= 11 {
-        10
-    } else {
-        c.valor
-    }
 }
 
 // Hi-Lo value para una carta (2-6 +1, 7-9 0, 10-A -1)

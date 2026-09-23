@@ -1,20 +1,44 @@
 use crate::game::deck::Carta;
 use crate::game::player::Jugador;
 
-// Función para repartir cartas iniciales
+pub struct Game {
+    pub jugador: Jugador,
+    pub banca: Jugador,
+    pub baraja: Vec<Carta>,
+}
+
+impl Game {
+    pub fn nuevo(baraja: Vec<Carta>) -> Self {
+        Game {
+            jugador: Jugador::nuevo(),
+            banca: Jugador::nuevo(),
+            baraja,
+        }
+    }
+
+    pub fn repartir_cartas_iniciales(&mut self) {
+        self.jugador.tomar_carta(&mut self.baraja);
+        self.banca.tomar_carta(&mut self.baraja);
+        self.jugador.tomar_carta(&mut self.baraja);
+        self.banca.tomar_carta(&mut self.baraja);
+
+        self.jugador.puntos = self.jugador.puntaje();
+        self.banca.puntos = self.banca.puntaje();
+    }
+}
+
+// Funciones antiguas para mantener compatibilidad temporal
+// Serán eliminadas después de migrar todos los usos.
 pub fn repartir_cartas(jugador: &mut Jugador, banca: &mut Jugador, baraja: &mut Vec<Carta>) {
-    // Se reparten dos cartas a cada jugador
     jugador.tomar_carta(baraja);
     banca.tomar_carta(baraja);
     jugador.tomar_carta(baraja);
     banca.tomar_carta(baraja);
 
-    // Actualizar puntos
     jugador.puntos = jugador.puntaje();
     banca.puntos = banca.puntaje();
 }
 
-// Función para jugar un turno
 pub fn jugar_turno(jugador: &mut Jugador, baraja: &mut Vec<Carta>, tomar_carta: bool) {
     if tomar_carta {
         jugador.tomar_carta(baraja);
@@ -22,7 +46,6 @@ pub fn jugar_turno(jugador: &mut Jugador, baraja: &mut Vec<Carta>, tomar_carta: 
     }
 }
 
-// Función para determinar el ganador
 pub fn determinar_ganador(jugador: &mut Jugador, banca: &mut Jugador) -> String {
     let puntos_jugador = jugador.puntos;
     let puntos_banca = banca.puntos;

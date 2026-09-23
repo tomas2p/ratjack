@@ -9,15 +9,29 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use game::deck::crear_baraja;
-use game::logic::repartir_cartas;
+use game::rules::Game;
 use strategies::parse_strategies;
 // rand used inside strategies module; no direct usage here
 use crate::auto::simulate;
 use crate::cli::{parse_args, Mode};
-use game::player::Jugador;
 use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
 use std::io::{self, stdout};
+
+fn setup_terminal() -> io::Result<Terminal<CrosstermBackend<std::io::Stdout>>> {
+    enable_raw_mode()?;
+    execute!(stdout(), EnterAlternateScreen)?;
+    let backend = CrosstermBackend::new(stdout());
+    let mut terminal = Terminal::new(backend)?;
+    terminal.clear()?;
+    Ok(terminal)
+}
+
+fn restore_terminal() -> io::Result<()> {
+    disable_raw_mode()?;
+    execute!(io::stdout(), LeaveAlternateScreen)?;
+    Ok(())
+}
 
 fn main() -> io::Result<()> {
     let cfg = parse_args();
@@ -37,38 +51,21 @@ fn main() -> io::Result<()> {
                 return Ok(());
             }
 
-            // Configuración de terminal (modo UI necesario para mostrar progreso)
-            enable_raw_mode()?;
-            execute!(stdout(), EnterAlternateScreen)?;
-
-            let backend = CrosstermBackend::new(stdout());
-            let mut terminal = Terminal::new(backend)?;
-            terminal.clear()?;
-
+            let mut terminal = setup_terminal()?;
             let res = ui::run_auto_ui(&mut terminal, cfg.reps, cfg.num_players, strategies);
-
-            // Restaurar terminal
-            disable_raw_mode()?;
-            execute!(io::stdout(), LeaveAlternateScreen)?;
-
+            restore_terminal()?;
             return res;
         }
         Mode::Ui => {
-            // Configuración de terminal (modo interactivo)
-            enable_raw_mode()?;
-            execute!(stdout(), EnterAlternateScreen)?;
-
-            let backend = CrosstermBackend::new(stdout());
-            let mut terminal = Terminal::new(backend)?;
-            terminal.clear()?;
+            let mut terminal = setup_terminal()?;
 
             // Inicialización del juego
-            let mut baraja = crear_baraja();
-            let mut jugador = Jugador::nuevo();
-            let mut banca = Jugador::nuevo();
+            let baraja = crear_baraja();
+            let mut game = Game::nuevo(baraja);
 
             // Repartir cartas iniciales
-            repartir_cartas(&mut jugador, &mut banca, &mut baraja);
+            game.repartir_cartas_iniciales();
+
             // Antes de ejecutar la UI, usar la configuración parseada por cli
             let ui_strategies = parse_strategies(&cfg.ui_str_raw);
             let label_b = ui_strategies
@@ -91,23 +88,20 @@ fn main() -> io::Result<()> {
             } else {
                 Some(label_b)
             };
-            // Pasar referencias a strings; los Strings deben vivir hasta que run_game termine
+
             let lj_ref = lj_opt.as_ref().map(|s| s.as_str());
             let lb_ref = lb_opt.as_ref().map(|s| s.as_str());
 
             let result = ui::run_game(
                 &mut terminal,
-                &mut jugador,
-                &mut banca,
-                &mut baraja,
+                &mut game.jugador,
+                &mut game.banca,
+                &mut game.baraja,
                 lj_ref,
                 lb_ref,
             );
 
-            // Restaurar terminal
-            disable_raw_mode()?;
-            execute!(io::stdout(), LeaveAlternateScreen)?;
-
+            restore_terminal()?;
             result
         }
     }
