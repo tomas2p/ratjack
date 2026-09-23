@@ -25,35 +25,6 @@ impl Game {
         self.jugador.puntos = self.jugador.puntaje();
         self.banca.puntos = self.banca.puntaje();
     }
-
-    pub fn jugar_turno_jugador(&mut self, tomar_carta: bool) {
-        if tomar_carta {
-            self.jugador.tomar_carta(&mut self.baraja);
-            self.jugador.puntos = self.jugador.puntaje();
-        }
-    }
-
-    pub fn determinar_ganador(&mut self) -> String {
-        let puntos_jugador = self.jugador.puntos;
-        let puntos_banca = self.banca.puntos;
-
-        let mensaje = if puntos_jugador > 21 {
-            self.banca.partida_ganada();
-            "Te has pasado. ¡La banca gana!"
-        } else if puntos_banca > 21 {
-            self.jugador.partida_ganada();
-            "La banca se ha pasado. ¡Has ganado!"
-        } else if puntos_jugador > puntos_banca {
-            self.jugador.partida_ganada();
-            "¡Has ganado!"
-        } else if puntos_banca > puntos_jugador {
-            self.banca.partida_ganada();
-            "La banca gana."
-        } else {
-            "Empate."
-        };
-        mensaje.to_string()
-    }
 }
 
 // Funciones antiguas para mantener compatibilidad temporal

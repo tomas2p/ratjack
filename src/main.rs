@@ -14,7 +14,6 @@ use strategies::parse_strategies;
 // rand used inside strategies module; no direct usage here
 use crate::auto::simulate;
 use crate::cli::{parse_args, Mode};
-use game::player::Jugador;
 use ratatui::backend::CrosstermBackend;
 use ratatui::Terminal;
 use std::io::{self, stdout};
