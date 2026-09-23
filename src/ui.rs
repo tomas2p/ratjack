@@ -211,7 +211,6 @@ pub fn run_auto_ui<B: Backend>(
     let mut per_game_ties = 0u32;
     let mut busts = vec![0u32; num_players];
     let mut total_points = vec![0u64; num_players];
-    let mut ties = 0u32; // kept for compatibility but unused in per-partida mode
 
     // render helper: draw title/content/footer matching normal game UI exactly
     let render = |frame: &mut ratatui::Frame, _title: &str, lines: Vec<String>| {
@@ -332,7 +331,6 @@ pub fn run_auto_ui<B: Backend>(
                                         for v in total_points.iter_mut() {
                                             *v = 0;
                                         }
-                                        ties = 0;
                                         // update reps and players and strategies
                                         // note: shadowing the local num_players variable is tricky; use mutable local
                                         // but here num_players is immutable; create mutable local copy above if needed
@@ -544,9 +542,7 @@ pub fn run_auto_ui<B: Backend>(
         wins: wins.clone(),
         wins_per_game: wins_per_game.clone(),
         per_game_ties,
-        busts: busts.clone(),
         total_points: total_points.clone(),
-        ties,
         strat_labels,
     };
 

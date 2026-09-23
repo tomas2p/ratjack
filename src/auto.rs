@@ -10,9 +10,7 @@ pub struct Summary {
     pub wins: Vec<u32>,
     pub wins_per_game: Vec<u32>,
     pub per_game_ties: u32,
-    pub busts: Vec<u32>,
     pub total_points: Vec<u64>,
-    pub ties: u32,
     pub strat_labels: Vec<String>,
 }
 
@@ -41,10 +39,7 @@ pub(crate) fn simulate(reps: u32, num_players: usize, strategies: Vec<Strategy>)
     let mut wins = vec![0u32; num_players];
     let mut wins_per_game = vec![0u32; num_players];
     let mut per_game_ties = 0u32;
-    let mut busts = vec![0u32; num_players];
     let mut total_points = vec![0u64; num_players];
-    // `ties` (per-enfrentamiento) is deprecated in this mode; keep for compatibility but will remain 0
-    let mut ties = 0u32;
 
     for _ in 0..reps {
         let mut baraja = crear_baraja();
@@ -85,13 +80,10 @@ pub(crate) fn simulate(reps: u32, num_players: usize, strategies: Vec<Strategy>)
         }
 
         // evaluate: all-vs-all pairwise comparisons
-        // total_points and bust counters per player
+        // total_points per player
         for i in 0..num_players {
             let pts = jugadores[i].puntaje();
             total_points[i] += pts as u64;
-            if pts > 21 {
-                busts[i] += 1;
-            }
         }
 
         // per-game outcome only (no enfrentamientos): determine top scorers ≤21
@@ -129,9 +121,7 @@ pub(crate) fn simulate(reps: u32, num_players: usize, strategies: Vec<Strategy>)
         wins,
         wins_per_game,
         per_game_ties,
-        busts,
         total_points,
-        ties,
         strat_labels,
     }
 }
