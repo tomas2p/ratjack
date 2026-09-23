@@ -766,7 +766,15 @@ fn render_ui(frame: &mut ratatui::Frame, jugador: &Jugador, banca: &Jugador, app
             )
             .title_bottom(
                 Span::styled(
-                    format!("Ganadas: {} | Alg: {}", jugador.partidas_ganadas, algoritmo),
+                    format!(
+                        "Ganadas: {}{}",
+                        jugador.partidas_ganadas,
+                        if !algoritmo.is_empty() {
+                            format!(" | Alg: {}", algoritmo)
+                        } else {
+                            "".to_string()
+                        }
+                    ),
                     Style::default().fg(Color::White),
                 )
                 .into_centered_line(),
