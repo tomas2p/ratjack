@@ -9,7 +9,7 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use game::deck::crear_baraja;
-use game::game::Game;
+use game::rules::Game;
 use strategies::parse_strategies;
 // rand used inside strategies module; no direct usage here
 use crate::auto::simulate;

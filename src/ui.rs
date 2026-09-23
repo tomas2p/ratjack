@@ -1,7 +1,7 @@
 use crate::game::{
     deck::Carta,
-    game::{determinar_ganador, jugar_turno, repartir_cartas},
     player::Jugador,
+    rules::{determinar_ganador, jugar_turno, repartir_cartas},
 };
 use crate::strategies::{should_draw, Strategy};
 use crossterm::event::{self, Event, KeyCode, KeyEventKind};
