@@ -1,6 +1,6 @@
 use crate::game::{
     deck::Carta,
-    logic::{determinar_ganador, jugar_turno, repartir_cartas},
+    game::{determinar_ganador, jugar_turno, repartir_cartas},
     player::Jugador,
 };
 use crate::strategies::{should_draw, Strategy};

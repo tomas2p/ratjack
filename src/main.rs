@@ -9,7 +9,7 @@ use crossterm::{
     terminal::{disable_raw_mode, enable_raw_mode, EnterAlternateScreen, LeaveAlternateScreen},
 };
 use game::deck::crear_baraja;
-use game::logic::repartir_cartas;
+use game::game::Game;
 use strategies::parse_strategies;
 // rand used inside strategies module; no direct usage here
 use crate::auto::simulate;
@@ -63,12 +63,11 @@ fn main() -> io::Result<()> {
             terminal.clear()?;
 
             // Inicialización del juego
-            let mut baraja = crear_baraja();
-            let mut jugador = Jugador::nuevo();
-            let mut banca = Jugador::nuevo();
+            let baraja = crear_baraja();
+            let mut game = Game::nuevo(baraja);
 
             // Repartir cartas iniciales
-            repartir_cartas(&mut jugador, &mut banca, &mut baraja);
+            game.repartir_cartas_iniciales();
             // Antes de ejecutar la UI, usar la configuración parseada por cli
             let ui_strategies = parse_strategies(&cfg.ui_str_raw);
             let label_b = ui_strategies
@@ -97,9 +96,9 @@ fn main() -> io::Result<()> {
 
             let result = ui::run_game(
                 &mut terminal,
-                &mut jugador,
-                &mut banca,
-                &mut baraja,
+                &mut game.jugador,
+                &mut game.banca,
+                &mut game.baraja,
                 lj_ref,
                 lb_ref,
             );

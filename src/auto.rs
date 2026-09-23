@@ -1,5 +1,5 @@
 use crate::game::deck::crear_baraja;
-use crate::game::logic::jugar_turno;
+use crate::game::game::jugar_turno;
 use crate::game::player::Jugador;
 use crate::strategies::{should_draw, strategy_label, Strategy};
 
